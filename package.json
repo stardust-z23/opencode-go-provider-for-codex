@@ -1,0 +1,254 @@
+{
+	"name": "opencode-go-provider-for-codex",
+	"publisher": "codexgo",
+	"displayName": "%displayName%",
+	"description": "%description%",
+	"keywords": [
+		"ai",
+		"codex",
+		"opencode",
+		"opencode-go",
+		"model-picker",
+		"config",
+		"toml",
+		"openai-compatible"
+	],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/stardust-z23/opencode-go-provider-for-codex"
+	},
+	"version": "0.1.0",
+	"engines": {
+		"vscode": "^1.116.0"
+	},
+	"categories": [
+		"AI",
+		"Other"
+	],
+	"license": "MIT",
+	"activationEvents": [
+		"onStartupFinished"
+	],
+	"capabilities": {
+		"untrustedWorkspaces": {
+			"supported": false,
+			"description": "This extension reads and writes the Codex configuration file (config.toml) in your user home directory, and stores an API key in VS Code SecretStorage."
+		}
+	},
+	"contributes": {
+		"commands": [
+			{
+				"command": "codexgo.selectModel",
+				"category": "%commandCategory%",
+				"title": "%command.selectModel%",
+				"icon": "$(list-selection)"
+			},
+			{
+				"command": "codexgo.refreshModels",
+				"category": "%commandCategory%",
+				"title": "%command.refreshModels%",
+				"icon": "$(refresh)"
+			},
+			{
+				"command": "codexgo.syncModelCatalog",
+				"category": "%commandCategory%",
+				"title": "%command.syncModelCatalog%",
+				"icon": "$(cloud-download)"
+			},
+			{
+				"command": "codexgo.removeModelCatalog",
+				"category": "%commandCategory%",
+				"title": "%command.removeModelCatalog%",
+				"icon": "$(discard)"
+			},
+			{
+				"command": "codexgo.setApiKey",
+				"category": "%commandCategory%",
+				"title": "%command.setApiKey%"
+			},
+			{
+				"command": "codexgo.getApiKey",
+				"category": "%commandCategory%",
+				"title": "%command.getApiKey%"
+			},
+			{
+				"command": "codexgo.checkUsage",
+				"category": "%commandCategory%",
+				"title": "%command.checkUsage%",
+				"icon": "$(pulse)"
+			},
+			{
+				"command": "codexgo.toggleProxy",
+				"category": "%commandCategory%",
+				"title": "%command.toggleProxy%",
+				"icon": "$(server)"
+			},
+			{
+				"command": "codexgo.openCodexConfig",
+				"category": "%commandCategory%",
+				"title": "%command.openCodexConfig%",
+				"icon": "$(file-code)"
+			},
+			{
+				"command": "codexgo.openSettings",
+				"category": "%commandCategory%",
+				"title": "%command.openSettings%"
+			}
+		],
+		"walkthroughs": [
+			{
+				"id": "codexGoGettingStarted",
+				"title": "%walkthrough.title%",
+				"description": "%walkthrough.description%",
+				"steps": [
+					{
+						"id": "setApiKey",
+						"title": "%walkthrough.setApiKey.title%",
+						"description": "%walkthrough.setApiKey.description%",
+						"media": {
+							"markdown": "resources/walkthrough/set-api-key.md"
+						},
+						"completionEvents": [
+							"onCommand:codexgo.setApiKey"
+						]
+					},
+					{
+						"id": "selectModel",
+						"title": "%walkthrough.selectModel.title%",
+						"description": "%walkthrough.selectModel.description%",
+						"media": {
+							"markdown": "resources/walkthrough/select-model.md"
+						},
+						"completionEvents": [
+							"onCommand:codexgo.selectModel"
+						]
+					}
+				]
+			}
+		],
+		"configuration": {
+			"title": "%config.title%",
+			"properties": {
+				"codexgo.apiKeyEnvVar": {
+					"type": "string",
+					"default": "OPENCODE_GO_API_KEY",
+					"markdownDescription": "%config.apiKeyEnvVar.desc%"
+				},
+				"codexgo.codexHome": {
+					"type": "string",
+					"default": "",
+					"markdownDescription": "%config.codexHome.desc%"
+				},
+				"codexgo.codexExecutable": {
+					"type": "string",
+					"default": "",
+					"markdownDescription": "%config.codexExecutable.desc%"
+				},
+				"codexgo.maxBackups": {
+					"type": "number",
+					"default": 5,
+					"minimum": 1,
+					"maximum": 50,
+					"markdownDescription": "%config.maxBackups.desc%"
+				},
+				"codexgo.showUnsupportedModels": {
+					"type": "boolean",
+					"default": true,
+					"markdownDescription": "%config.showUnsupportedModels.desc%"
+				},
+				"codexgo.showDeprecatedModels": {
+					"type": "boolean",
+					"default": false,
+					"markdownDescription": "%config.showDeprecatedModels.desc%"
+				},
+				"codexgo.modelsDevMirrorUrl": {
+					"type": "string",
+					"default": "https://modelsdev-mirror.onesoft.top/catalog.json",
+					"markdownDescription": "%config.modelsDevMirrorUrl.desc%"
+				},
+				"codexgo.modelsDevMirrorToken": {
+					"type": "string",
+					"default": "",
+					"markdownDescription": "%config.modelsDevMirrorToken.desc%"
+				},
+				"codexgo.modelsDevUpdateInterval": {
+					"type": "number",
+					"default": 60000,
+					"minimum": 30000,
+					"markdownDescription": "%config.modelsDevUpdateInterval.desc%"
+				},
+				"codexgo.showUsage": {
+					"type": "boolean",
+					"default": true,
+					"markdownDescription": "%config.showUsage.desc%"
+				},
+				"codexgo.usageRefreshInterval": {
+					"type": "number",
+					"default": 5,
+					"minimum": 1,
+					"maximum": 60,
+					"markdownDescription": "%config.usageRefreshInterval.desc%"
+				},
+				"codexgo.usageDisplayWindow": {
+					"type": "string",
+					"enum": [
+						"rolling",
+						"weekly",
+						"monthly"
+					],
+					"enumDescriptions": [
+						"%config.usageDisplayWindow.rolling.desc%",
+						"%config.usageDisplayWindow.weekly.desc%",
+						"%config.usageDisplayWindow.monthly.desc%"
+					],
+					"default": "rolling",
+					"markdownDescription": "%config.usageDisplayWindow.desc%"
+				},
+				"codexgo.usageWarningThreshold": {
+					"type": "number",
+					"default": 80,
+					"minimum": 0,
+					"maximum": 100,
+					"markdownDescription": "%config.usageWarningThreshold.desc%"
+				},
+				"codexgo.usageErrorThreshold": {
+					"type": "number",
+					"default": 95,
+					"minimum": 0,
+					"maximum": 100,
+					"markdownDescription": "%config.usageErrorThreshold.desc%"
+				},
+				"codexgo.proxyEnabled": {
+					"type": "boolean",
+					"default": true,
+					"markdownDescription": "%config.proxyEnabled.desc%"
+				},
+				"codexgo.proxyPort": {
+					"type": "number",
+					"default": 15722,
+					"minimum": 1024,
+					"maximum": 65535,
+					"markdownDescription": "%config.proxyPort.desc%"
+				}
+			}
+		}
+	},
+	"main": "./out/extension.js",
+	"scripts": {
+		"vscode:prepublish": "npm run compile",
+		"clean": "node scripts/clean-out.mjs",
+		"compile": "npm run clean && tsc -p ./",
+		"watch": "tsc -watch -p ./",
+		"test": "npm run compile && node scripts/test-toml-edit.mjs && node scripts/test-model-merge.mjs && node scripts/test-catalog.mjs && node scripts/test-go-usage.mjs && node scripts/test-proxy-chat.mjs && node scripts/test-proxy-anthropic.mjs",
+		"test:e2e": "npm run compile && node scripts/test-codex-e2e.mjs",
+		"test:live": "npm run compile && node scripts/test-codex-live.mjs",
+		"test:binding": "node scripts/test-thinking-binding-live.mjs",
+		"build": "npx @vscode/vsce package -o extension.vsix"
+	},
+	"devDependencies": {
+		"@types/node": "^22",
+		"@types/vscode": "^1.116.0",
+		"@vscode/vsce": "^4.0.0",
+		"typescript": "^5.9.2"
+	}
+}
