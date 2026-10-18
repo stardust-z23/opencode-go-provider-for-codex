@@ -12,6 +12,9 @@ export interface LocalProxyOptions {
 	upstreamBaseUrl: string;
 	resolveApiKey: () => Promise<string | undefined>;
 	resolveWireApi: (modelId: string) => ProxyWireApi | undefined | Promise<ProxyWireApi | undefined>;
+	resolveEfforts?: (
+		modelId: string,
+	) => string[] | undefined | Promise<string[] | undefined>;
 	log?: (message: string, detail?: Record<string, unknown>) => void;
 }
 
@@ -69,6 +72,137 @@ const MAX_REQUEST_BYTES = 32 * 1024 * 1024;
 const PROXY_MANAGED_PLACEHOLDER = "PROXY_MANAGED";
 const INLINE_THINK_OPEN = "<" + "think" + ">";
 const INLINE_THINK_CLOSE = "<" + "/" + "think" + ">";
+const MAX_CACHED_CHAT_RESPONSES = 256;
+
+interface CachedChatResponse {
+	calls: Map<string, Record<string, unknown>>;
+	reasoning?: string;
+}
+
+/**
+ * Codex can send a follow-up as `previous_response_id + function_call_output`
+ * instead of replaying the assistant tool-call item. Chat upstreams require
+ * the tool call and its reasoning immediately before the tool result, so keep
+ * a bounded cache of the call items emitted by the proxy.
+ */
+class CodexChatHistoryStore {
+	private readonly responses = new Map<string, CachedChatResponse>();
+	private readonly order: string[] = [];
+
+	recordResponse(response: Record<string, unknown>): void {
+		const id = typeof response.id === "string" ? response.id : "";
+		const output = Array.isArray(response.output) ? response.output : [];
+		if (!id || output.length === 0) {
+			return;
+		}
+
+		const calls = new Map<string, Record<string, unknown>>();
+		let reasoning = "";
+		for (const item of output) {
+			if (!isRecord(item)) {
+				continue;
+			}
+			const type = typeof item.type === "string" ? item.type : "";
+			if (type === "function_call" || type === "custom_tool_call") {
+				const callId = typeof item.call_id === "string" ? item.call_id : "";
+				if (callId) {
+					calls.set(callId, cloneRecord(item));
+				}
+				continue;
+			}
+			if (type === "reasoning") {
+				const text = reasoningPartsText(item.content) || reasoningPartsText(item.summary);
+				if (text) {
+					reasoning = reasoning ? `${reasoning}\n\n${text}` : text;
+				}
+			}
+		}
+		if (calls.size === 0) {
+			return;
+		}
+
+		this.responses.delete(id);
+		this.responses.set(id, { calls, reasoning: reasoning || undefined });
+		this.order.push(id);
+		while (this.order.length > MAX_CACHED_CHAT_RESPONSES) {
+			const oldest = this.order.shift();
+			if (oldest) {
+				this.responses.delete(oldest);
+			}
+		}
+	}
+
+	enrichRequest(body: Record<string, unknown>): void {
+		const previousResponseId =
+			typeof body.previous_response_id === "string" ? body.previous_response_id : "";
+		const cached = previousResponseId ? this.responses.get(previousResponseId) : undefined;
+		const input = Array.isArray(body.input) ? body.input : undefined;
+		if (!cached || !input) {
+			return;
+		}
+
+		const outputCallIds = new Set<string>();
+		const existingCallIds = new Set<string>();
+		for (const item of input) {
+			if (!isRecord(item)) {
+				continue;
+			}
+			const type = typeof item.type === "string" ? item.type : "";
+			const callId = typeof item.call_id === "string" ? item.call_id : "";
+			if (!callId) {
+				continue;
+			}
+			if (type === "function_call_output" || type === "custom_tool_call_output") {
+				outputCallIds.add(callId);
+			} else if (type === "function_call" || type === "custom_tool_call") {
+				existingCallIds.add(callId);
+			}
+		}
+
+		const missing = [...outputCallIds].filter(
+			(callId) => !existingCallIds.has(callId) && cached.calls.has(callId),
+		);
+		if (missing.length === 0) {
+			return;
+		}
+		const firstOutputIndex = input.findIndex((item) => {
+			if (!isRecord(item)) {
+				return false;
+			}
+			const type = typeof item.type === "string" ? item.type : "";
+			const callId = typeof item.call_id === "string" ? item.call_id : "";
+			return (
+				(type === "function_call_output" || type === "custom_tool_call_output") &&
+				missing.includes(callId)
+			);
+		});
+		if (firstOutputIndex < 0) {
+			return;
+		}
+
+		const restored: unknown[] = [];
+		const hasReasoning = input.some((item) => isRecord(item) && item.type === "reasoning");
+		if (cached.reasoning && !hasReasoning) {
+			restored.push({
+				type: "reasoning",
+				summary: [{ type: "summary_text", text: cached.reasoning }],
+			});
+		}
+		for (const callId of missing) {
+			const item = cached.calls.get(callId);
+			if (item) {
+				restored.push(cloneRecord(item));
+			}
+		}
+		body.input = [...input.slice(0, firstOutputIndex), ...restored, ...input.slice(firstOutputIndex)];
+	}
+}
+
+const codexChatHistory = new CodexChatHistoryStore();
+
+function cloneRecord(value: Record<string, unknown>): Record<string, unknown> {
+	return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+}
 
 /**
  * Starts a loopback-only Responses API bridge.
@@ -183,7 +317,13 @@ async function handleProxyRequest(
 		return;
 	}
 
+	const upstreamEfforts = await options.resolveEfforts?.(modelId);
+	mapCodexEffortToUpstream(body, upstreamEfforts);
+
 	const wireApi = (await options.resolveWireApi(modelId)) ?? "chat";
+	if (wireApi === "chat") {
+		codexChatHistory.enrichRequest(body);
+	}
 
 	const context: ProxyRequestContext = { body, apiKey, wireApi };
 	if (wireApi !== "responses" && hasCompactionTrigger(body)) {
@@ -224,6 +364,33 @@ async function handleProxyRequest(
 	}
 
 	await proxyChatCompletions(req, res, options, context);
+}
+
+/**
+ * Codex's picker hides `max` and `minimal`. Catalog sync projects `max` to the
+ * visible `xhigh` level and maps `minimal` to `low` when the model has no low
+ * level. Restore the upstream values here.
+ */
+function mapCodexEffortToUpstream(
+	body: Record<string, unknown>,
+	upstreamEfforts: string[] | undefined,
+): void {
+	if (!Array.isArray(upstreamEfforts)) {
+		return;
+	}
+	const reasoning = isRecord(body.reasoning) ? body.reasoning : undefined;
+	if (
+		reasoning?.effort === "xhigh" &&
+		upstreamEfforts.includes("max")
+	) {
+		reasoning.effort = "max";
+	} else if (
+		reasoning?.effort === "low" &&
+		upstreamEfforts.includes("minimal") &&
+		!upstreamEfforts.includes("low")
+	) {
+		reasoning.effort = "minimal";
+	}
 }
 
 function hasCompactionTrigger(body: Record<string, unknown>): boolean {
@@ -442,6 +609,7 @@ export function responsesToChatRequest(body: Record<string, unknown>): ChatTrans
 		messages.push({ role: "system", content: body.instructions });
 	}
 	appendResponsesInput(messages, body.input, toolMappings, usedNames);
+	backfillToolCallReasoningPlaceholders(messages);
 
 	const request: Record<string, unknown> = {
 		model: body.model,
@@ -590,6 +758,28 @@ function appendResponsesInput(
 
 	const pendingToolCalls: Array<Record<string, unknown>> = [];
 	let pendingReasoning = "";
+	let lastAssistant: Record<string, unknown> | undefined;
+	const mergeReasoning = (existing: unknown, text: string): string =>
+		typeof existing === "string" && existing ? `${existing}\n\n${text}` : text;
+	const attachReasoning = (message: Record<string, unknown>): void => {
+		if (!pendingReasoning) {
+			return;
+		}
+		message.reasoning_content = mergeReasoning(message.reasoning_content, pendingReasoning);
+		pendingReasoning = "";
+	};
+	const consumePendingReasoning = (): void => {
+		if (!pendingReasoning) {
+			return;
+		}
+		if (lastAssistant) {
+			lastAssistant.reasoning_content = mergeReasoning(
+				lastAssistant.reasoning_content,
+				pendingReasoning,
+			);
+		}
+		pendingReasoning = "";
+	};
 	const flushToolCalls = (): void => {
 		if (pendingToolCalls.length === 0) {
 			return;
@@ -599,11 +789,9 @@ function appendResponsesInput(
 			content: null,
 			tool_calls: pendingToolCalls.splice(0),
 		};
-		if (pendingReasoning) {
-			message.reasoning_content = pendingReasoning;
-			pendingReasoning = "";
-		}
+		attachReasoning(message);
 		messages.push(message);
+		lastAssistant = message;
 	};
 
 	for (const item of input) {
@@ -614,7 +802,7 @@ function appendResponsesInput(
 		if (type === "reasoning") {
 			const reasoning = reasoningInputText(item);
 			if (reasoning) {
-				pendingReasoning = pendingReasoning ? `${pendingReasoning}\n\n${reasoning}` : reasoning;
+				pendingReasoning = mergeReasoning(pendingReasoning, reasoning);
 			}
 			continue;
 		}
@@ -625,9 +813,12 @@ function appendResponsesInput(
 				role,
 				content: convertMessageContent(item.content),
 			};
-			if (role === "assistant" && pendingReasoning) {
-				message.reasoning_content = pendingReasoning;
-				pendingReasoning = "";
+			if (role === "assistant") {
+				attachReasoning(message);
+				lastAssistant = message;
+			} else if (role !== "tool") {
+				consumePendingReasoning();
+				lastAssistant = undefined;
 			}
 			messages.push(message);
 			continue;
@@ -670,6 +861,23 @@ function appendResponsesInput(
 		}
 	}
 	flushToolCalls();
+	consumePendingReasoning();
+}
+
+function backfillToolCallReasoningPlaceholders(messages: Array<Record<string, unknown>>): void {
+	for (const message of messages) {
+		if (message.role !== "assistant") {
+			continue;
+		}
+		const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+		if (toolCalls.length === 0) {
+			continue;
+		}
+		const reasoning = message.reasoning_content;
+		if (typeof reasoning !== "string" || !reasoning.trim()) {
+			message.reasoning_content = "tool call";
+		}
+	}
 }
 
 function reasoningInputText(item: Record<string, unknown>): string {
@@ -883,6 +1091,7 @@ function chatJsonToResponses(
 	const response = baseResponse(model, "completed", output);
 	response.id = responseIdFromChat(payload);
 	response.usage = chatUsageToResponsesUsage(payload.usage);
+	codexChatHistory.recordResponse(response);
 	return response;
 }
 
@@ -959,6 +1168,7 @@ class ChatSseToResponsesWriter {
 		if (status === "incomplete") {
 			response.incomplete_details = { reason: "max_output_tokens" };
 		}
+		codexChatHistory.recordResponse(response);
 		this.send(status === "incomplete" ? "response.incomplete" : "response.completed", { response });
 		this.completed = true;
 		this.res.end();

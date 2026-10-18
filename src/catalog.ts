@@ -33,7 +33,7 @@ export const CATALOG_FILE_NAME = "opencode-go-models.json";
  */
 export const CODEX_EFFORT_VALUES = ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
 
-const EFFORT_DESCRIPTIONS: Record<string, string> = {
+export const CODEX_EFFORT_DESCRIPTIONS: Record<string, string> = {
 	minimal: "Fastest responses with the least thinking.",
 	low: "Fast responses with lighter reasoning.",
 	medium: "Balances speed and reasoning depth for everyday tasks.",
@@ -42,6 +42,38 @@ const EFFORT_DESCRIPTIONS: Record<string, string> = {
 	max: "Maximum reasoning depth for the hardest problems.",
 	ultra: "Maximum reasoning with automatic task delegation.",
 };
+
+/** Filter declared levels to the set Codex accepts, in canonical order. */
+export function filterCodexEfforts(declared: readonly string[]): string[] {
+	const known = new Set(declared);
+	return CODEX_EFFORT_VALUES.filter((effort) => known.has(effort));
+}
+
+/**
+ * Codex 的模型选择器会用内部可见档位过滤目录。它默认不展示 `max` 和
+ * `minimal`，且默认隐藏 `ultra`。这里把 `max` 映射到稳定的可见档
+ * `xhigh`，并在模型没有 `low` 时把 `minimal` 映射到 `low`；代理层会在
+ * 转发时还原为上游值。多个上游档位落到同一可见槽位时只保留一个。
+ */
+export function mapUpstreamEffortsToCodex(declared: readonly string[]): string[] {
+	const known = new Set(declared);
+	const seen = new Set<string>();
+	const mapped: string[] = [];
+	for (const effort of declared) {
+		let visibleEffort = effort;
+		if (effort === "max") {
+			visibleEffort = "xhigh";
+		}
+		if (effort === "minimal" && !known.has("low")) {
+			visibleEffort = "low";
+		}
+		if (!seen.has(visibleEffort)) {
+			seen.add(visibleEffort);
+			mapped.push(visibleEffort);
+		}
+	}
+	return mapped;
+}
 
 export interface CatalogReasoningLevel {
 	effort: string;
@@ -151,14 +183,13 @@ export function resolveReasoningLevels(
 		}
 	}
 
-	const declared = (model.efforts ?? []).filter((effort) => CODEX_EFFORT_VALUES.includes(effort));
-	const ordered = CODEX_EFFORT_VALUES.filter((effort) => declared.includes(effort));
+	const ordered = filterCodexEfforts(mapUpstreamEffortsToCodex(model.efforts ?? []));
 	if (ordered.length === 0) {
 		return Array.isArray(templateLevels) ? (templateLevels as CatalogReasoningLevel[]) : [];
 	}
 	return ordered.map((effort) => ({
 		effort,
-		description: templateDescriptions.get(effort) ?? EFFORT_DESCRIPTIONS[effort] ?? effort,
+		description: templateDescriptions.get(effort) ?? CODEX_EFFORT_DESCRIPTIONS[effort] ?? effort,
 	}));
 }
 
@@ -167,7 +198,8 @@ function resolveDefaultLevel(template: CatalogEntry, levels: CatalogReasoningLev
 	if (typeof templateDefault === "string" && levels.some((l) => l.effort === templateDefault)) {
 		return templateDefault;
 	}
-	return levels[0]?.effort ?? (typeof templateDefault === "string" ? templateDefault : "medium");
+	const highest = [...levels].reverse().find((level) => level.effort !== "none");
+	return highest?.effort ?? levels.at(-1)?.effort ?? (typeof templateDefault === "string" ? templateDefault : "medium");
 }
 
 /** 按 Codex 期望的格式序列化目录（2 空格缩进 JSON，末尾换行）。 */

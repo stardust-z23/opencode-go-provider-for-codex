@@ -9,7 +9,7 @@
  * 使用通用 SDK / HTTP 库名称会被判定为滥用，可能遭到限流。
  * 修改时请与 package.json 保持同步。
  */
-export const USER_AGENT = "opencode-go-provider-for-codex/0.1.0";
+export const USER_AGENT = "opencode-go-provider-for-codex/0.1.6";
 
 /** models.dev 镜像用来标识流量的请求头。 */
 export const MIRROR_PLATFORM_HEADER = "opencode-go-provider-for-codex";

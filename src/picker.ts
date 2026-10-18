@@ -18,6 +18,7 @@ import * as vscode from "vscode";
 import { l10n, l10nFormat } from "./localize";
 import { logger } from "./logger";
 import { formatPrice, formatTokenCount, ModelInfo } from "./modelInfo";
+import { CODEX_EFFORT_DESCRIPTIONS, filterCodexEfforts } from "./catalog";
 import { prepareModelList, resetModelDiscoveryState } from "./modelList";
 import { ApiKeyContext, getEnvKeyName, resolveApiKey, setApiKeyCommand, showEnvSetupHelp } from "./apiKey";
 import { applySelection, openCodexConfigFile, readCurrent } from "./codexConfig";
@@ -25,14 +26,14 @@ import { CodexWireApi, providerIdForWireApi } from "./tomlEdit";
 import { refreshStatusBar } from "./statusBar";
 import { ensureProxyStarted, getProxyBaseUrl, isProxyActive } from "./proxyController";
 
-/** Codex 的 `model_reasoning_effort` 键接受的推理强度。 */
-const CODEX_REASONING_EFFORTS = ["minimal", "low", "medium", "high"];
-
-const EFFORT_DESCRIPTIONS: Record<string, string> = {
-	minimal: "Fastest responses; least thinking.",
-	low: "Slightly more thinking than minimal.",
-	medium: "Balanced thinking and speed.",
-	high: "Deepest thinking; slowest responses.",
+const EFFORT_LABELS: Record<string, string> = {
+	minimal: "Minimal",
+	low: "Low",
+	medium: "Medium",
+	high: "High",
+	xhigh: "XHigh",
+	max: "Max",
+	ultra: "Ultra",
 };
 
 type PickerOutcome = "picked" | "cancelled" | "refresh" | "setKey" | "openConfig" | "again";
@@ -256,7 +257,7 @@ async function handlePick(ctx: PickerContext, model: ModelInfo): Promise<PickerO
 
 	// 可选的第二步：推理强度（仅当目录声明了 Codex 真正接受的强度时）。
 	let reasoningEffort: string | null | undefined;
-	const efforts = (model.efforts ?? []).filter((effort) => CODEX_REASONING_EFFORTS.includes(effort));
+	const efforts = filterCodexEfforts(model.efforts ?? []);
 	if (model.reasoning && efforts.length > 0) {
 		reasoningEffort = await pickReasoningEffort(efforts);
 		if (reasoningEffort === undefined) {
@@ -286,9 +287,9 @@ async function pickReasoningEffort(efforts: string[]): Promise<string | null | u
 	const items: EffortItem[] = [
 		{ label: l10n("Default (leave model_reasoning_effort unset)"), value: null },
 		...efforts.map((effort) => {
-			const description = EFFORT_DESCRIPTIONS[effort];
+			const description = CODEX_EFFORT_DESCRIPTIONS[effort];
 			return {
-				label: effort.charAt(0).toUpperCase() + effort.slice(1),
+				label: l10n(EFFORT_LABELS[effort] ?? effort),
 				description: effort,
 				detail: description ? l10n(description) : undefined,
 				value: effort,

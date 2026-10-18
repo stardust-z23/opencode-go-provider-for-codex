@@ -97,7 +97,7 @@ test("buildCatalogEntries 克隆模板并覆盖模型相关字段", () => {
 	assert.equal(first.context_window, 128000);
 	assert.equal(first.max_context_window, 128000);
 	assert.deepEqual(first.supported_reasoning_levels.map((level) => level.effort), ["low", "high"]);
-	assert.equal(first.default_reasoning_level, "low", "模板默认值不在列表中 → 取第一档");
+	assert.equal(first.default_reasoning_level, "high", "模板默认值不在列表中 → 取最高档");
 	assert.equal(first.base_instructions, "You are Codex.", "模板里的未知字段会随克隆保留");
 	assert.equal(first.shell_type, "shell_command");
 
@@ -123,8 +123,47 @@ test("resolveReasoningLevels 只保留 Codex 接受的推理强度，并按固�
 		template,
 	);
 	assert.deepEqual(levels.map((level) => level.effort), ["low", "high", "ultra"]);
+	assert.deepEqual(
+		catalog.filterCodexEfforts(["high", "bogus", "max", "low"]),
+		["low", "high", "max"],
+	);
 	assert.equal(levels[0].description, "low effort", "模板里有描述时优先使用");
 	assert.ok(levels[2].description.length > 0, "模板没有的强度也会有描述");
+});
+
+test("resolveReasoningLevels maps upstream max to visible xhigh and uses the highest level", () => {
+	const entries = catalog.buildCatalogEntries(
+		[{ id: "deepseek-v4.1-flash", name: "DeepSeek V4.1 Flash", efforts: ["low", "high", "max"] }],
+		templateEntry(),
+	);
+	assert.deepEqual(
+		entries[0].supported_reasoning_levels.map((level) => level.effort),
+		["low", "high", "xhigh"],
+	);
+	assert.equal(entries[0].default_reasoning_level, "xhigh");
+});
+
+test("resolveReasoningLevels collapses xhigh and max onto one visible xhigh level", () => {
+	const entries = catalog.buildCatalogEntries(
+		[{ id: "model", name: "Model", efforts: ["low", "xhigh", "max"] }],
+		templateEntry(),
+	);
+	assert.deepEqual(
+		entries[0].supported_reasoning_levels.map((level) => level.effort),
+		["low", "xhigh"],
+	);
+	assert.equal(entries[0].default_reasoning_level, "xhigh");
+});
+
+test("resolveReasoningLevels maps minimal to low when low is absent", () => {
+	const entries = catalog.buildCatalogEntries(
+		[{ id: "minimal-model", name: "Minimal Model", efforts: ["minimal", "high"] }],
+		templateEntry(),
+	);
+	assert.deepEqual(
+		entries[0].supported_reasoning_levels.map((level) => level.effort),
+		["low", "high"],
+	);
 });
 
 test("剥离第一方传输字段，让工具保留在顶层 tools 数组里", () => {

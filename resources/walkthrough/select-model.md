@@ -4,5 +4,9 @@ Run the command below and pick a model. The extension writes `model` and `model_
 
 [Select Model…](command:codexgo.selectModel)
 
-- Models served over **Chat Completions** or **Responses** work with Codex.
-- Models using the **Anthropic Messages protocol** cannot be used by Codex — the picker marks them and only offers to copy the model ID.
+- Models served over the native **Responses** API work directly.
+- Models served over **Chat Completions** or **Anthropic Messages** work through the local proxy, which is enabled by default and can be toggled from the status bar tooltip.
+- Codex 0.162+ no longer accepts `wire_api = "chat"`, so the extension always writes a Responses provider.
+- This picker writes defaults for future conversations. To switch an open conversation, use Codex's own model picker.
+
+To add the models to Codex's own `/model` picker, run **Sync OpenCode Go Models to Codex** first.

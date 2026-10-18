@@ -83,6 +83,247 @@ test("responsesToChatRequest flattens namespaced tools and preserves reasoning",
 	assert.equal(body.messages.at(-1).content, "hi");
 });
 
+test("responsesToChatRequest attaches reasoning that arrives after assistant text", () => {
+	const request = {
+		model: "glm-5.3",
+		input: [
+			{ type: "message", role: "assistant", content: [{ type: "output_text", text: "Done." }] },
+			{
+				type: "reasoning",
+				summary: [{ type: "summary_text", text: "Checked the result." }],
+			},
+			{ type: "message", role: "user", content: [{ type: "input_text", text: "Continue." }] },
+		],
+	};
+	const { body } = responsesToChatRequest(request);
+	const assistant = body.messages.find((message) => message.role === "assistant");
+	assert.equal(assistant.reasoning_content, "Checked the result.");
+	assert.equal(body.messages.at(-1).role, "user");
+});
+
+test("responsesToChatRequest attaches reasoning that arrives after tool output", () => {
+	const request = {
+		model: "glm-5.3",
+		input: [
+			{ type: "function_call", call_id: "call_1", name: "exec", arguments: "{}" },
+			{ type: "function_call_output", call_id: "call_1", output: "ok" },
+			{
+				type: "reasoning",
+				summary: [{ type: "summary_text", text: "The command passed." }],
+			},
+			{ type: "message", role: "user", content: [{ type: "input_text", text: "Next." }] },
+		],
+	};
+	const { body } = responsesToChatRequest(request);
+	const toolMessage = body.messages.find((message) => message.tool_calls);
+	assert.equal(toolMessage.reasoning_content, "The command passed.");
+	assert.equal(body.messages.at(-1).role, "user");
+});
+
+test("responsesToChatRequest drops reasoning without a matching assistant turn", () => {
+	const request = {
+		model: "glm-5.3",
+		input: [
+			{
+				type: "reasoning",
+				summary: [{ type: "summary_text", text: "Recovered from history." }],
+			},
+			{ type: "message", role: "user", content: [{ type: "input_text", text: "Continue." }] },
+		],
+	};
+	const { body } = responsesToChatRequest(request);
+	assert.deepEqual(body.messages, [{ role: "user", content: "Continue." }]);
+});
+
+test("responsesToChatRequest backfills reasoning_content for tool-call messages", () => {
+	const request = {
+		model: "glm-5.3",
+		input: [
+			{ type: "function_call", call_id: "call_1", name: "exec", arguments: "{}" },
+			{ type: "function_call_output", call_id: "call_1", output: "ok" },
+		],
+	};
+	const { body } = responsesToChatRequest(request);
+	const toolMessage = body.messages.find((message) => message.tool_calls);
+	assert.equal(toolMessage.reasoning_content, "tool call");
+});
+
+test("chat proxy restores tool call and reasoning from previous_response_id", async () => {
+	const seen = [];
+	const upstream = http.createServer((req, res) => {
+		const chunks = [];
+		req.on("data", (chunk) => chunks.push(chunk));
+		req.on("end", () => {
+			seen.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+			res.writeHead(200, { "content-type": "application/json" });
+			if (seen.length === 1) {
+				res.end(
+					JSON.stringify({
+						id: "chatcmpl_history_1",
+						choices: [
+							{
+								message: {
+									role: "assistant",
+									content: null,
+									reasoning_content: "Need to run the command.",
+									tool_calls: [
+										{
+											id: "call_1",
+											type: "function",
+											function: { name: "exec", arguments: "{}" },
+										},
+									],
+								},
+								finish_reason: "tool_calls",
+							},
+						],
+						usage: {},
+					}),
+				);
+				return;
+			}
+			res.end(
+				JSON.stringify({
+					id: "chatcmpl_history_2",
+					choices: [{ message: { role: "assistant", content: "done" }, finish_reason: "stop" }],
+					usage: {},
+				}),
+			);
+		});
+	});
+	const upstreamPort = await listen(upstream);
+	const proxy = await startLocalProxy({
+		port: 0,
+		upstreamBaseUrl: `http://127.0.0.1:${upstreamPort}/v1`,
+		resolveApiKey: async () => "test-key",
+		resolveWireApi: () => "chat",
+	});
+	try {
+		const firstResponse = await fetch(`${proxy.baseUrl}/responses`, {
+			method: "POST",
+			headers: { authorization: "Bearer test-key", "content-type": "application/json" },
+			body: JSON.stringify({
+				model: "glm-5.3",
+				stream: false,
+				input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+				tools: [{ type: "function", name: "exec", parameters: { type: "object", properties: {} } }],
+			}),
+		});
+		assert.equal(firstResponse.status, 200);
+		const first = await firstResponse.json();
+		assert.ok(first.output.some((item) => item.type === "reasoning"));
+		assert.ok(first.output.some((item) => item.type === "function_call"));
+
+		const secondResponse = await fetch(`${proxy.baseUrl}/responses`, {
+			method: "POST",
+			headers: { authorization: "Bearer test-key", "content-type": "application/json" },
+			body: JSON.stringify({
+				model: "glm-5.3",
+				stream: false,
+				previous_response_id: first.id,
+				input: [{ type: "function_call_output", call_id: "call_1", output: "ok" }],
+			}),
+		});
+		assert.equal(secondResponse.status, 200);
+		assert.equal(seen.length, 2);
+		const assistant = seen[1].messages.find((message) => message.tool_calls);
+		assert.ok(assistant, "the cached assistant tool call must be restored");
+		assert.equal(assistant.reasoning_content, "Need to run the command.");
+		assert.equal(seen[1].messages.at(-1).role, "tool");
+	} finally {
+		await proxy.close();
+		await close(upstream);
+	}
+});
+
+test("chat proxy maps visible xhigh back to upstream max", async () => {
+	const seen = [];
+	const upstream = http.createServer((req, res) => {
+		const chunks = [];
+		req.on("data", (chunk) => chunks.push(chunk));
+		req.on("end", () => {
+			seen.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+			res.writeHead(200, { "content-type": "application/json" });
+			res.end(
+				JSON.stringify({
+					id: "chatcmpl_effort_1",
+					choices: [{ message: { role: "assistant", content: "done" }, finish_reason: "stop" }],
+					usage: {},
+				}),
+			);
+		});
+	});
+	const upstreamPort = await listen(upstream);
+	const proxy = await startLocalProxy({
+		port: 0,
+		upstreamBaseUrl: `http://127.0.0.1:${upstreamPort}/v1`,
+		resolveApiKey: async () => "test-key",
+		resolveWireApi: () => "chat",
+		resolveEfforts: async () => ["low", "high", "max"],
+	});
+	try {
+		const response = await fetch(`${proxy.baseUrl}/responses`, {
+			method: "POST",
+			headers: { authorization: "Bearer test-key", "content-type": "application/json" },
+			body: JSON.stringify({
+				model: "deepseek-v4.1-flash",
+				stream: false,
+				reasoning: { effort: "xhigh" },
+				input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+			}),
+		});
+		assert.equal(response.status, 200);
+		assert.equal(seen[0].reasoning_effort, "max");
+	} finally {
+		await proxy.close();
+		await close(upstream);
+	}
+});
+
+test("chat proxy maps visible low back to upstream minimal when low is absent", async () => {
+	const seen = [];
+	const upstream = http.createServer((req, res) => {
+		const chunks = [];
+		req.on("data", (chunk) => chunks.push(chunk));
+		req.on("end", () => {
+			seen.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+			res.writeHead(200, { "content-type": "application/json" });
+			res.end(
+				JSON.stringify({
+					id: "chatcmpl_effort_minimal",
+					choices: [{ message: { role: "assistant", content: "done" }, finish_reason: "stop" }],
+					usage: {},
+				}),
+			);
+		});
+	});
+	const upstreamPort = await listen(upstream);
+	const proxy = await startLocalProxy({
+		port: 0,
+		upstreamBaseUrl: `http://127.0.0.1:${upstreamPort}/v1`,
+		resolveApiKey: async () => "test-key",
+		resolveWireApi: () => "chat",
+		resolveEfforts: async () => ["minimal", "high"],
+	});
+	try {
+		const response = await fetch(`${proxy.baseUrl}/responses`, {
+			method: "POST",
+			headers: { authorization: "Bearer test-key", "content-type": "application/json" },
+			body: JSON.stringify({
+				model: "minimal-model",
+				stream: false,
+				reasoning: { effort: "low" },
+				input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+			}),
+		});
+		assert.equal(response.status, 200);
+		assert.equal(seen[0].reasoning_effort, "minimal");
+	} finally {
+		await proxy.close();
+		await close(upstream);
+	}
+});
+
 test("native proxy repairs reasoning and forwards session headers", async () => {
 	const seen = [];
 	const upstream = http.createServer((req, res) => {

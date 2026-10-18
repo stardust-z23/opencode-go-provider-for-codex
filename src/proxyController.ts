@@ -196,6 +196,7 @@ async function enableProxy(userInitiated: boolean): Promise<void> {
 			upstreamBaseUrl: OPENCODE_GO_BASE_URL,
 			resolveApiKey: async () => (await resolveApiKey(extensionContext!.secrets)).key,
 			resolveWireApi,
+			resolveEfforts,
 			log: (message, detail) => logger.debug("proxy.request", { message, ...detail }),
 		});
 		updateStatus({
@@ -259,6 +260,7 @@ async function restartProxy(): Promise<void> {
 			upstreamBaseUrl: OPENCODE_GO_BASE_URL,
 			resolveApiKey: async () => (await resolveApiKey(extensionContext!.secrets)).key,
 			resolveWireApi,
+			resolveEfforts,
 			log: (message, detail) => logger.debug("proxy.request", { message, ...detail }),
 		});
 		updateStatus({
@@ -330,6 +332,29 @@ async function resolveWireApi(modelId: string): Promise<ProxyWireApi> {
 	}
 	const hardcoded = HARDCODED_GO_MODELS.find((entry) => entry.id === modelId);
 	return hardcoded?.wireApi ?? "chat";
+}
+
+async function resolveEfforts(modelId: string): Promise<string[] | undefined> {
+	try {
+		const tokenSource = new vscode.CancellationTokenSource();
+		try {
+			const models = await prepareModelList(
+				{},
+				tokenSource.token,
+				extensionContext!.secrets,
+				extensionContext!.globalState,
+			);
+			return models.find((entry) => entry.id === modelId)?.efforts;
+		} finally {
+			tokenSource.dispose();
+		}
+	} catch (error) {
+		logger.warn("proxy.effortLookup.failed", {
+			modelId,
+			error: error instanceof Error ? error.message : String(error),
+		});
+	}
+	return undefined;
 }
 
 function runProxyOperation(next: () => Promise<void>): Promise<void> {

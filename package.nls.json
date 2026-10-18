@@ -1,6 +1,6 @@
 {
 	"displayName": "OpenCode Go Provider for Codex",
-	"description": "Fetch, preview and select OpenCode Go models, then apply them to Codex safely (writes Codex config.toml with automatic backups).",
+	"description": "Fetch, preview and apply OpenCode Go models to Codex safely, sync Codex's model catalog, and bridge Chat Completions or Anthropic Messages through a loopback proxy.",
 	"commandCategory": "OpenCode Go for Codex",
 	"command.selectModel": "Select Model for Codex",
 	"command.refreshModels": "Update Model List (forced)",
@@ -17,7 +17,7 @@
 	"walkthrough.setApiKey.title": "Set your OpenCode Go API key",
 	"walkthrough.setApiKey.description": "Subscribe to OpenCode Go, copy your API key, and store it here.",
 	"walkthrough.selectModel.title": "Select a model for Codex",
-	"walkthrough.selectModel.description": "Pick a model from the live list; the extension writes Codex config.toml for you (with a backup).",
+	"walkthrough.selectModel.description": "Pick a model from the live list. Responses models work directly; other protocols use the loopback proxy. The extension writes Codex config.toml for you (with a backup).",
 	"config.title": "OpenCode Go for Codex",
 	"config.apiKeyEnvVar.desc": "Name of the environment variable written to the provider's `env_key` field. Codex reads this variable for authentication.",
 	"config.codexHome.desc": "Directory containing Codex's `config.toml`. Leave empty to use the `CODEX_HOME` environment variable, or `~/.codex`.",
@@ -36,6 +36,6 @@
 	"config.usageDisplayWindow.monthly.desc": "Monthly (30-day) window.",
 	"config.usageWarningThreshold.desc": "Usage percentage at which the status bar item turns yellow. The worst of the three windows decides.",
 	"config.usageErrorThreshold.desc": "Usage percentage at which the status bar item turns red. The worst of the three windows decides.",
-	"config.proxyEnabled.desc": "Run the loopback Chat Completions and Anthropic Messages proxy and keep the OpenCode Go provider pointed at it. Disabling it restores the direct endpoint but may break thinking models that require reasoning_text replay.",
+	"config.proxyEnabled.desc": "Run the loopback bridge for native Responses repair plus Chat Completions and Anthropic Messages translation, and keep the OpenCode Go provider pointed at it. Disabling it restores the direct endpoint but may break thinking models that require reasoning_text replay.",
 	"config.proxyPort.desc": "Port for the loopback OpenCode Go proxy (1024-65535)."
 }

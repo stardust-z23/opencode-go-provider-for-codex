@@ -1,6 +1,6 @@
 ## 设置 OpenCode Go API 密钥
 
-1. 在 [OpenCode 控制台](https://opencode.ai/console)订阅 **OpenCode Go** 并复制 API 密钥。
+1. 在 [opencode.ai/auth](https://opencode.ai/auth) 订阅 **OpenCode Go** 并复制 API 密钥。
 2. 运行下面的命令并粘贴密钥。
 
 [设置 API 密钥](command:codexgo.setApiKey)

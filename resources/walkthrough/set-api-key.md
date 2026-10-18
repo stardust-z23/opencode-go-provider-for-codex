@@ -1,6 +1,6 @@
 ## Set your OpenCode Go API key
 
-1. Subscribe to **OpenCode Go** at the [OpenCode Console](https://opencode.ai/console) and copy your API key.
+1. Subscribe to **OpenCode Go** at [opencode.ai/auth](https://opencode.ai/auth) and copy your API key.
 2. Run the command below and paste the key.
 
 [Set API Key](command:codexgo.setApiKey)
