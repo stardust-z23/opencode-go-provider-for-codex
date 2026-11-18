@@ -582,6 +582,47 @@ tbody tr:nth-child(even):hover {
 	text-align: center;
 }
 
+.pagination {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 8px;
+	min-height: 34px;
+	padding-top: 6px;
+}
+
+.pagination button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 26px;
+	padding: 0;
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+	background: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+	font-size: 18px;
+	line-height: 1;
+}
+
+.pagination button:hover:not(:disabled) {
+	background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground));
+}
+
+.pagination button:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+
+.pagination span {
+	min-width: 86px;
+	color: var(--vscode-descriptionForeground);
+	text-align: center;
+	font-size: 11px;
+	font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 900px) {
 	.quota-rows {
 		grid-template-columns: 1fr;

@@ -10,10 +10,13 @@
 			restored.status === "success" || restored.status === "error"
 				? restored.status
 				: "all",
-		metric:
-			restored.metric === "requests" || restored.metric === "hitRate"
-				? restored.metric
-				: "tokens",
+		metric: restored.metric === "hitRate" ? restored.metric : "tokens",
+		page:
+			typeof restored.page === "number" &&
+			Number.isInteger(restored.page) &&
+			restored.page >= 1
+				? restored.page
+				: 1,
 	};
 	let snapshot;
 	let quota;
@@ -24,6 +27,8 @@
 	const byId = (id) => document.getElementById(id);
 	const refreshButton = byId("refresh-button");
 	const menuButton = byId("menu-button");
+	const previousPage = byId("previous-page");
+	const nextPage = byId("next-page");
 	const actionMenu = byId("action-menu");
 	const numberCompact = new Intl.NumberFormat(locale, {
 		notation: "compact",
@@ -60,6 +65,7 @@
 			if (message.filters.range) state.range = message.filters.range;
 			if (message.filters.model) state.model = message.filters.model;
 			if (message.filters.status) state.status = message.filters.status;
+			if (message.filters.page) state.page = message.filters.page;
 		}
 		render();
 	});
@@ -74,6 +80,8 @@
 	menuButton.addEventListener("click", () => {
 		setMenuOpen(actionMenu.hidden);
 	});
+	previousPage.addEventListener("click", () => changePage(-1));
+	nextPage.addEventListener("click", () => changePage(1));
 	actionMenu.addEventListener("click", (event) => {
 		const button = event.target.closest("button[data-action]");
 		if (!button) return;
@@ -96,6 +104,7 @@
 		range: state.range,
 		model: state.model,
 		status: state.status,
+		page: state.page,
 	});
 
 	function render() {
@@ -234,6 +243,7 @@
 		modelSelect.value = state.model;
 		modelSelect.onchange = () => {
 			state.model = modelSelect.value;
+			state.page = 1;
 			saveState();
 			requestFilters();
 		};
@@ -247,10 +257,12 @@
 		statusSelect.value = state.status;
 		statusSelect.onchange = () => {
 			state.status = statusSelect.value;
+			state.page = 1;
 			saveState();
 			requestFilters();
 		};
 		if (modelWasReset) {
+			state.page = 1;
 			saveState();
 			requestFilters();
 		}
@@ -259,7 +271,6 @@
 		trendControl.replaceChildren(
 			...[
 				["tokens", labels.tokens],
-				["requests", labels.totalRequests],
 				["hitRate", labels.cacheHitRate],
 			].map(([value, label]) => {
 				const button = element("button", "", label);
@@ -487,13 +498,33 @@
 		const empty = byId("empty-state");
 		empty.hidden = rows.length > 0;
 		empty.textContent = labels.emptyRequests;
+		const total = snapshot.totalMatched;
+		const offset = snapshot.offset;
+		const pageSize = snapshot.recordLimit;
+		const currentPage = Math.floor(offset / pageSize) + 1;
+		const totalPages = Math.max(1, Math.ceil(total / pageSize));
+		if (state.page !== currentPage) {
+			state.page = currentPage;
+			saveState();
+		}
 		byId("table-meta").textContent =
-			snapshot.totalMatched > rows.length
-				? formatTemplate(labels.showingLatest, [
-						String(rows.length),
-						String(snapshot.totalMatched),
+			total > 0
+				? formatTemplate(labels.showingRange, [
+						String(offset + 1),
+						String(offset + rows.length),
+						String(total),
 					])
 				: "";
+		byId("page-label").textContent = formatTemplate(labels.pageOf, [
+			String(currentPage),
+			String(totalPages),
+		]);
+		previousPage.disabled = currentPage <= 1;
+		nextPage.disabled = currentPage >= totalPages;
+		previousPage.title = labels.previousPage;
+		previousPage.setAttribute("aria-label", labels.previousPage);
+		nextPage.title = labels.nextPage;
+		nextPage.setAttribute("aria-label", labels.nextPage);
 	}
 
 	function cacheReadCell(record) {
@@ -520,6 +551,7 @@
 
 	function updateRange(range) {
 		state.range = range;
+		state.page = 1;
 		saveState();
 		requestFilters();
 	}
@@ -530,7 +562,16 @@
 			range: state.range,
 			model: state.model,
 			status: state.status,
+			page: state.page,
 		});
+	}
+
+	function changePage(delta) {
+		const next = Math.max(1, state.page + delta);
+		if (next === state.page) return;
+		state.page = next;
+		saveState();
+		requestFilters();
 	}
 
 	function saveState() {
@@ -543,7 +584,6 @@
 	}
 
 	function trendValue(point) {
-		if (state.metric === "requests") return point.requests;
 		if (state.metric === "hitRate") {
 			return point.cacheHitRate === null ? null : point.cacheHitRate * 100;
 		}
@@ -551,7 +591,6 @@
 	}
 
 	function formatTrendValue(point) {
-		if (state.metric === "requests") return numberExact.format(point.requests);
 		if (state.metric === "hitRate") {
 			return point.cacheHitRate === null ? dash() : percentFormat.format(point.cacheHitRate);
 		}

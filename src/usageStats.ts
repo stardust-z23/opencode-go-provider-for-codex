@@ -35,6 +35,7 @@ export interface UsageRecordQuery {
 	model?: string;
 	status?: UsageStatusFilter;
 	limit?: number;
+	offset?: number;
 }
 
 export interface UsageSummary {
@@ -55,7 +56,6 @@ export interface UsageSummary {
 
 export interface UsageTrendPoint {
 	start: number;
-	requests: number;
 	tokens: number;
 	cacheHitRate: number | null;
 }
@@ -68,6 +68,7 @@ export interface UsageDashboardSnapshot {
 	records: UsageRecordView[];
 	totalMatched: number;
 	recordLimit: number;
+	offset: number;
 	trend: UsageTrendPoint[];
 }
 
@@ -260,29 +261,26 @@ function buildTrend(records: UsageRecordView[], start: number, end: number): Usa
 	const bucketMs = trendBucketMs(start, end);
 	const buckets = new Map<
 		number,
-		{ requests: number; tokens: number; fresh: number; read: number; write: number }
+		{ tokens: number; fresh: number; read: number; write: number }
 	>();
-	const alignedStart = Math.floor(start / bucketMs) * bucketMs;
-	for (let cursor = alignedStart; cursor <= end; cursor += bucketMs) {
-		buckets.set(cursor, { requests: 0, tokens: 0, fresh: 0, read: 0, write: 0 });
-	}
 	for (const record of records) {
 		const bucketStart = Math.floor(record.startedAt / bucketMs) * bucketMs;
-		const bucket = buckets.get(bucketStart);
-		if (!bucket) {
-			continue;
-		}
-		bucket.requests += 1;
+		const bucket = buckets.get(bucketStart) ?? {
+			tokens: 0,
+			fresh: 0,
+			read: 0,
+			write: 0,
+		};
 		bucket.tokens += record.realTotalTokens;
 		bucket.fresh += record.freshInputTokens;
 		bucket.read += record.cacheReadTokens;
 		bucket.write += record.cacheWriteTokens;
+		buckets.set(bucketStart, bucket);
 	}
 	return [...buckets.entries()]
 		.sort((left, right) => left[0] - right[0])
 		.map(([bucketStart, bucket]) => ({
 			start: bucketStart,
-			requests: bucket.requests,
 			tokens: bucket.tokens,
 			cacheHitRate: cacheHitRate(bucket.fresh, bucket.read, bucket.write),
 		}));
@@ -314,7 +312,9 @@ export function buildUsageSnapshot(
 		return true;
 	});
 	const descending = [...filtered].sort((left, right) => right.startedAt - left.startedAt);
-	const records = descending.slice(0, Math.max(1, query.limit ?? 200));
+	const recordLimit = Math.max(1, query.limit ?? 20);
+	const offset = Math.max(0, query.offset ?? 0);
+	const records = descending.slice(offset, offset + recordLimit);
 	const totalRequests = filtered.length;
 	const successRequests = filtered.reduce(
 		(count, record) => count + (record.success ? 1 : 0),
@@ -367,7 +367,8 @@ export function buildUsageSnapshot(
 		models,
 		records,
 		totalMatched: totalRequests,
-		recordLimit: Math.max(1, query.limit ?? 200),
+		recordLimit,
+		offset,
 		trend: buildTrend(descending, start, end),
 	};
 }

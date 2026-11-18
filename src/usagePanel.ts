@@ -17,6 +17,7 @@ interface UsagePanelFilters {
 	range: UsageRangePreset;
 	model?: string;
 	status: UsageStatusFilter;
+	page: number;
 }
 
 interface UsagePanelMessage {
@@ -24,8 +25,11 @@ interface UsagePanelMessage {
 	range?: unknown;
 	model?: unknown;
 	status?: unknown;
+	page?: unknown;
 	action?: unknown;
 }
+
+const REQUESTS_PER_PAGE = 20;
 
 export function registerUsageDashboard(
 	context: vscode.ExtensionContext,
@@ -64,12 +68,22 @@ async function openUsageDashboard(
 	const filters: UsagePanelFilters = {
 		range: "1h",
 		status: "all",
+		page: 1,
 	};
 	const disposables: vscode.Disposable[] = [];
 	const postSnapshot = (): void => {
+		let data = store.getSnapshot(queryFor(filters));
+		const totalPages = Math.max(
+			1,
+			Math.ceil(data.totalMatched / REQUESTS_PER_PAGE),
+		);
+		if (filters.page > totalPages) {
+			filters.page = totalPages;
+			data = store.getSnapshot(queryFor(filters));
+		}
 		void panel.webview.postMessage({
 			type: "snapshot",
-			data: store.getSnapshot(queryFor(filters)),
+			data,
 			quota: getUsagePanelState(),
 			labels: usageLabels(),
 			filters,
@@ -118,10 +132,16 @@ async function openUsageDashboard(
 			if (isStatus(message.status)) {
 				filters.status = message.status;
 			}
+			if (isPage(message.page)) {
+				filters.page = message.page;
+			}
 			postSnapshot();
 			return;
 		}
 		if (message.type === "setFilters") {
+			const previousRange = filters.range;
+			const previousModel = filters.model;
+			const previousStatus = filters.status;
 			if (isRange(message.range)) {
 				filters.range = message.range;
 			}
@@ -131,6 +151,16 @@ async function openUsageDashboard(
 					: undefined;
 			if (isStatus(message.status)) {
 				filters.status = message.status;
+			}
+			if (
+				previousRange !== filters.range ||
+				previousModel !== filters.model ||
+				previousStatus !== filters.status
+			) {
+				filters.page = 1;
+			}
+			if (isPage(message.page)) {
+				filters.page = message.page;
 			}
 			postSnapshot();
 			return;
@@ -190,6 +220,7 @@ function queryFor(filters: UsagePanelFilters): {
 	model?: string;
 	status: UsageStatusFilter;
 	limit: number;
+	offset: number;
 } {
 	const end = Date.now();
 	const today = new Date(end);
@@ -205,7 +236,8 @@ function queryFor(filters: UsagePanelFilters): {
 		end,
 		model: filters.model,
 		status: filters.status,
-		limit: 200,
+		limit: REQUESTS_PER_PAGE,
+		offset: (filters.page - 1) * REQUESTS_PER_PAGE,
 	};
 }
 
@@ -215,6 +247,10 @@ function isRange(value: unknown): value is UsageRangePreset {
 
 function isStatus(value: unknown): value is UsageStatusFilter {
 	return value === "all" || value === "success" || value === "error";
+}
+
+function isPage(value: unknown): value is number {
+	return typeof value === "number" && Number.isInteger(value) && value >= 1;
 }
 
 async function dashboardHtml(
@@ -252,6 +288,10 @@ function usageLabels(): Record<string, string> {
 		success: l10n("Success"),
 		error: l10n("Error"),
 		totalRequests: l10n("Requests"),
+		previousPage: l10n("Previous page"),
+		nextPage: l10n("Next page"),
+		pageOf: l10n("Page {0} of {1}"),
+		showingRange: l10n("Showing {0}-{1} of {2}"),
 		realTotalTokens: l10n("Real total tokens"),
 		cacheHitRate: l10n("Cache hit rate"),
 		successRate: l10n("Success rate"),
@@ -269,7 +309,6 @@ function usageLabels(): Record<string, string> {
 		time: l10n("Time"),
 		duration: l10n("Duration"),
 		emptyRequests: l10n("No requests in this range."),
-		showingLatest: l10n("Showing latest {0} of {1}"),
 		loading: l10n("Loading"),
 		setup: l10n("API key required"),
 		active: l10n("Active"),

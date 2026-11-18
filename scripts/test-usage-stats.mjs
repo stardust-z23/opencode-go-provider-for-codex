@@ -125,6 +125,24 @@ test("buildUsageSnapshot summarizes and filters records", () => {
 	assert.deepEqual(snapshot.models, ["deepseek-v4.1-flash", "glm-5.3"]);
 });
 
+test("buildUsageSnapshot paginates and omits empty trend buckets", () => {
+	const records = [
+		record({ id: "first", startedAt: 1_000, realTotalTokens: 100 }),
+		record({ id: "second", startedAt: 3_601_000, realTotalTokens: 200 }),
+	];
+	const snapshot = usage.buildUsageSnapshot(records, {
+		start: 0,
+		end: 7_200_000,
+		offset: 1,
+		limit: 1,
+	});
+	assert.equal(snapshot.records[0].id, "first");
+	assert.equal(snapshot.offset, 1);
+	assert.equal(snapshot.totalMatched, 2);
+	assert.equal(snapshot.trend.length, 2);
+	assert.equal("requests" in snapshot.trend[0], false);
+});
+
 test("cache drop detection requires a comparable same-session input", () => {
 	const previous = record({
 		id: "previous",

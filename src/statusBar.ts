@@ -309,28 +309,6 @@ function renderUsageContent(): void {
 	if (usage.useBalance) {
 		md.appendMarkdown(`\n${l10n("After the Go quota runs out, usage falls back to your balance.")}\n`);
 	}
-	const cache = getUsageStore()?.getStatusSummary();
-	if (cache && cache.requests > 0 && cache.cacheHitRate !== null) {
-		const scope =
-			cache.scope === "session"
-				? l10nFormat(
-						"Current session ({0}): {1} successful requests",
-						cache.model ?? "?",
-						String(cache.requests),
-					)
-				: l10nFormat(
-						"Last hour ({0}): {1} successful requests",
-						cache.model ?? "?",
-						String(cache.requests),
-					);
-		md.appendMarkdown(
-			`\n${l10nFormat(
-				"{0} · Cache hit: {1}",
-				scope,
-				formatPercent(cache.cacheHitRate * 100),
-			)}\n`,
-		);
-	}
 	appendActions(md);
 	usageItem.tooltip = md;
 }
@@ -495,5 +473,5 @@ function currentCacheLabel(): string {
 }
 
 function formatPercent(percent: number): string {
-	return `${Math.round(Math.max(0, Math.min(100, percent)))}%`;
+	return `${Math.max(0, Math.min(100, percent)).toFixed(1)}%`;
 }
