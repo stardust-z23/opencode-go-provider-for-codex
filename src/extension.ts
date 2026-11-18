@@ -16,18 +16,33 @@ import {
 	initializeProxy,
 	syncProxyWithSetting,
 } from "./proxyController";
+import { registerUsageDashboard } from "./usagePanel";
+import { disposeUsageStore, setUsageStore } from "./usageService";
+import { UsageStore } from "./usageStore";
 import { setExtensionVersion } from "./utils";
 
 /** 记录引导页是否已展示过的 Memento 键。 */
 const WELCOME_SHOWN_KEY = "codexgo.welcomeShown";
 
-export function activate(context: vscode.ExtensionContext): void {
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
 	const extensionVersion = String(context.extension.packageJSON.version ?? "unknown");
 	setExtensionVersion(extensionVersion);
 	logger.init();
 	logger.info("extension.activate", {
 		version: extensionVersion,
 	});
+
+	const usageStore = new UsageStore(context.globalStorageUri.fsPath, {
+		onError: (message, detail) => logger.warn(message, detail),
+	});
+	setUsageStore(usageStore);
+	try {
+		await usageStore.initialize();
+	} catch (error) {
+		logger.warn("usageStore.initialize.failed", {
+			error: error instanceof Error ? error.message : String(error),
+		});
+	}
 
 	initStatusBar(context);
 
@@ -53,6 +68,7 @@ export function activate(context: vscode.ExtensionContext): void {
 				"@ext:codexgo.opencode-go-provider-for-codex",
 			),
 		),
+		registerUsageDashboard(context, usageStore),
 	);
 	void initializeProxy(context).catch((error) => {
 		logger.error("proxy.initialize.failed", {
@@ -93,5 +109,6 @@ async function showWelcomeIfNeeded(context: vscode.ExtensionContext): Promise<vo
 
 export async function deactivate(): Promise<void> {
 	await disposeProxy();
+	await disposeUsageStore();
 	// 资源释放由 context.subscriptions 负责。
 }

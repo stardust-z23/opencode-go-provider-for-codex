@@ -23,14 +23,18 @@
 | `src/proxy/messages.ts` | Anthropic Messages 转换与 thinking 块处理 |
 | `src/statusBar.ts` | 套餐额度状态栏项与轮询 |
 | `src/goUsage.ts` | `/usage` 拉取、宽容解析、缓存与倒计时格式 |
+| `src/usageStats.ts` | 不依赖 `vscode` 的 usage 归一化、聚合、趋势和缓存骤降判定 |
+| `src/usageStore.ts` | 30 天 JSONL 持久化、内存索引、轻量清理与缓存状态汇总 |
+| `src/usagePanel.ts` | 使用统计 Webview、筛选、维护菜单与消息桥 |
+| `src/usageService.ts` | 当前扩展实例的 usage store 单例 |
 | `src/apiKey.ts` | SecretStorage 与旧环境变量的一次性迁移 |
 | `src/localize.ts` | 以英文原文为键的 zh-CN 字典 |
 
 ## 启动流程
 
-1. `activate()` 初始化日志器。
+1. `activate()` 初始化日志器与 usage store。
 2. 创建状态栏项并启动额度轮询。
-3. 注册全部命令。
+3. 注册全部命令和使用统计面板命令。
 4. 异步初始化常驻代理：
    - 已配置 OpenCode Go provider 且存在 API 密钥时自动启动。
    - 旧版通过环境变量提供的密钥会先迁移到 SecretStorage。
@@ -159,23 +163,32 @@ Chat Completions 上游要求 assistant 的 `tool_calls` 与对应 `tool` 结果
 
 Codex 的模型选择器会用内部可见档位列表过滤目录，默认不包含 `max` 和 `minimal`，且默认隐藏 `ultra`。目录同步因此把 `max` 投影到稳定的可见档 `xhigh`，并在模型没有 `low` 时把 `minimal` 映射为 `low`；落到同一槽位的档位会去重。代理收到 `xhigh` 或 `low` 后按模型声明还原为上游 `max` / `minimal`。模型同时声明 `xhigh` 和 `max` 时，用户看到的唯一 `XHigh` 槽位在选择后发送上游 `max`。
 
-## 状态栏与额度
+## 状态栏、额度与使用统计
 
-状态栏只显示套餐额度，命令为 `codexgo.checkUsage`。
+状态栏显示套餐额度和当前会话缓存命中率；点击命令为 `codexgo.openUsageDashboard`，额度刷新命令仍为 `codexgo.checkUsage`。
 
-- 点击刷新额度。
 - 正文显示 `codexgo.usageDisplayWindow` 指定的窗口。
 - 倒计时每分钟重绘一次，不触发网络请求。
 - 颜色取三个窗口中的最差用量，分别受 warning/error 阈值控制。
 - 额度缓存 5 分钟；拉取失败保留旧快照。
 - HTTP 401 表示没有可用 Go 套餐或密钥无效；其他失败显示通用错误。
+- 悬停操作与 Webview 顶部 `...` 菜单保留设置 API 密钥、获取密钥、同步/移除模型目录、打开配置/设置和重新加载窗口。
+
+使用统计只采集经本地代理转发并返回 usage 的推理请求，以及上游 HTTP 错误：
+
+- 记录模型、稳定会话头、Tokens、缓存、总耗时和状态；不保存 prompt、响应正文或工具结果。
+- 输入按 OpenAI `total input includes cache` 与网关 `input is fresh` 两种实际形态归一化；真实总 Tokens = 新增输入 + 缓存命中 + 缓存写入 + 输出。
+- 缓存命中率 = 缓存命中 ÷（新增输入 + 缓存命中 + 缓存写入）。
+- 同一会话、同一模型中，前次缓存命中至少 50,000、当前下降到一半以下且绝对减少至少 32,000 时标记“疑似缓存骤降”。
+- 按日保存为 `<globalStorage>/usage/YYYY-MM-DD.jsonl`，加载最近 7 天，磁盘最多保留 30 天或 50 MB。
+- Webview 使用原生 HTML/CSS/JS，无前端框架；请求表最多展示最近 200 条。
 
 ## 响应元数据
 
 - 原生 Responses 的 `response.completed` / `response.incomplete` usage 原样透传。
 - Chat Completions 会请求 `stream_options.include_usage`，并把 `prompt_tokens` / `completion_tokens`、缓存 token 与 reasoning token 换算成 Responses `usage`。
 - Anthropic Messages 会合并 `message_start` 与 `message_delta` 的 usage，并换算成同一结构。
-- Codex 因此可以获得每轮 input/output/total token 数。扩展目前不持久化每轮 usage，也不记录首 token 延迟、总耗时或 tokens/s；速度需要由客户端或额外代理埋点自行测量。
+- Codex 因此可以获得每轮 input/output/total token 数。代理同时记录每个上游请求的 trace、会话头、耗时和 usage；扩展持久化最近 30 天的轻量统计，但不记录首 token 延迟或 tokens/s。
 
 ## 多窗口与端口
 

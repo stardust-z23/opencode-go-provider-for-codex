@@ -8,6 +8,7 @@
 import * as vscode from "vscode";
 import { l10n, l10nFormat } from "./localize";
 import { logger } from "./logger";
+import { getUsageStore } from "./usageService";
 import { resolveApiKey } from "./apiKey";
 import {
 	clearUsageCache,
@@ -34,6 +35,25 @@ let usageKeyFingerprint: string | undefined;
 type UsageWindowKey = "rolling" | "weekly" | "monthly";
 type UsageItemState = "loading" | "setup" | "auth" | "error" | "active";
 
+export interface UsageQuotaWindowView {
+	key: UsageWindowKey;
+	label: string;
+	percent: number;
+	percentText: string;
+	resetText?: string;
+}
+
+export interface UsageQuotaPanelState {
+	state: UsageItemState;
+	windows: UsageQuotaWindowView[];
+	fetchedAt?: number;
+	autoRefreshMinutes: number;
+	useBalance: boolean;
+	errorDetail?: string;
+	warningThreshold: number;
+	errorThreshold: number;
+}
+
 const USAGE_WINDOW_LABELS: Record<UsageWindowKey, string> = {
 	rolling: "Rolling",
 	weekly: "Weekly",
@@ -44,13 +64,18 @@ const USAGE_ERROR_COLOR = "#f14c4c";
 const USAGE_WARNING_COLOR = "#cca700";
 
 let usageState: UsageItemState = "loading";
+const usageListeners = new Set<() => void>();
 
 export function initStatusBar(ctx: vscode.ExtensionContext): void {
 	secrets = ctx.secrets;
 	usageItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
 	usageItem.name = l10n("OpenCode Go status");
-	usageItem.command = "codexgo.checkUsage";
+	usageItem.command = "codexgo.openUsageDashboard";
 	ctx.subscriptions.push(usageItem);
+	const usageStore = getUsageStore();
+	if (usageStore) {
+		ctx.subscriptions.push(usageStore.onDidChange(() => renderUsage()));
+	}
 	applyUsageSetting();
 
 	ctx.subscriptions.push(
@@ -182,6 +207,11 @@ async function refreshGoUsage(force: boolean): Promise<GoUsageResult | null> {
 }
 
 function renderUsage(): void {
+	renderUsageContent();
+	notifyUsageListeners();
+}
+
+function renderUsageContent(): void {
 	if (!usageItem) {
 		return;
 	}
@@ -229,7 +259,7 @@ function renderUsage(): void {
 	const usage = getUsageSnapshot();
 	if (!usage) {
 		usageState = "loading";
-		renderUsage();
+		renderUsageContent();
 		return;
 	}
 
@@ -242,7 +272,10 @@ function renderUsage(): void {
 			? formatResetDuration(display.resetsAt)
 			: "";
 	const value = percentText === "?%" || !reset ? percentText : `${percentText} · ${reset}`;
-	usageItem.text = l10nFormat("OpenCode Go {0}: {1}", label, value);
+	const cacheText = currentCacheLabel();
+	usageItem.text =
+		l10nFormat("OpenCode Go {0}: {1}", label, value) +
+		(cacheText ? ` · ${cacheText}` : "");
 
 	const worst = Math.max(
 		usage.rolling?.percent ?? 0,
@@ -276,6 +309,16 @@ function renderUsage(): void {
 	if (usage.useBalance) {
 		md.appendMarkdown(`\n${l10n("After the Go quota runs out, usage falls back to your balance.")}\n`);
 	}
+	const cache = getUsageStore()?.getStatusSummary();
+	if (cache && cache.requests > 0 && cache.cacheHitRate !== null) {
+		md.appendMarkdown(
+			`\n${l10nFormat(
+				"Local requests: {0} · Cache hit: {1}",
+				String(cache.requests),
+				formatPercent(cache.cacheHitRate * 100),
+			)}\n`,
+		);
+	}
 	appendActions(md);
 	usageItem.tooltip = md;
 }
@@ -292,6 +335,9 @@ function actionTooltip(summary?: string): vscode.MarkdownString {
 
 function appendActions(md: vscode.MarkdownString): void {
 	md.appendMarkdown(`\n---\n**${l10n("Actions")}**\n\n`);
+	md.appendMarkdown(
+		`[$(graph) ${l10n("Open usage dashboard")}](command:codexgo.openUsageDashboard)  \n`,
+	);
 	md.appendMarkdown(`[$(key) ${l10n("Set API key")}](command:codexgo.setApiKey)  \n`);
 	md.appendMarkdown(
 		`[$(cloud-download) ${l10n("Sync models")}](command:codexgo.syncModelCatalog)  \n`,
@@ -351,9 +397,12 @@ function formatClockTime24(date: Date): string {
 	return `${hours}:${minutes}`;
 }
 
-export async function refreshGoUsageNow(): Promise<void> {
+export async function refreshGoUsageNow(showSummary = true): Promise<GoUsageResult | null> {
 	const usage = await refreshGoUsage(true);
 	if (!usage) {
+		if (!showSummary) {
+			return null;
+		}
 		const setKey = l10n("Set API Key");
 		if (usageState === "setup" || usageState === "auth") {
 			const message =
@@ -364,13 +413,75 @@ export async function refreshGoUsageNow(): Promise<void> {
 			if (picked === setKey) {
 				await vscode.commands.executeCommand("codexgo.setApiKey");
 			}
-			return;
+			return null;
 		}
 		void vscode.window.showWarningMessage(l10n("Go usage is temporarily unavailable."));
-		return;
+		return null;
 	}
 	const summary = formatUsageSummary(usage, l10n("limit"));
-	if (summary) {
+	if (summary && showSummary) {
 		void vscode.window.showInformationMessage(l10nFormat("OpenCode Go usage: {0}", summary));
 	}
+	return usage;
+}
+
+export function getUsagePanelState(): UsageQuotaPanelState {
+	const usage = getUsageSnapshot();
+	const thresholds = getUsageThresholds();
+	const windows: UsageQuotaWindowView[] = (
+		["rolling", "weekly", "monthly"] as const
+	).map((key) => {
+		const window = usage?.[key];
+		return {
+			key,
+			label: l10n(USAGE_WINDOW_LABELS[key]),
+			percent: window?.percent ?? 0,
+			percentText: formatUsagePercent(window?.percent, l10n("limit")),
+			resetText:
+				window &&
+				shouldShowReset(key, window) &&
+				window.resetsAt
+					? formatResetDuration(window.resetsAt) || undefined
+					: undefined,
+		};
+	});
+	return {
+		state: usageState,
+		windows,
+		fetchedAt: usage?.fetchedAt,
+		autoRefreshMinutes: Math.round(getUsageRefreshIntervalMs() / 60_000),
+		useBalance: usage?.useBalance === true,
+		errorDetail: usageState === "error" ? getUsageErrorDetail() : undefined,
+		warningThreshold: thresholds.warning,
+		errorThreshold: thresholds.error,
+	};
+}
+
+export function onDidChangeUsageState(listener: () => void): vscode.Disposable {
+	usageListeners.add(listener);
+	return {
+		dispose: () => usageListeners.delete(listener),
+	};
+}
+
+function notifyUsageListeners(): void {
+	for (const listener of usageListeners) {
+		try {
+			listener();
+		} catch {
+			// Dashboard listeners must not affect status-bar rendering.
+		}
+	}
+}
+
+function currentCacheLabel(): string {
+	const cache = getUsageStore()?.getStatusSummary();
+	if (!cache || cache.requests === 0 || cache.cacheHitRate === null) {
+		return "";
+	}
+	return l10nFormat("Cache: {0}", formatPercent(cache.cacheHitRate * 100));
+}
+
+function formatPercent(percent: number): string {
+	return `${Math.round(Math.max(0, Math.min(100, percent)))}%`;
 }

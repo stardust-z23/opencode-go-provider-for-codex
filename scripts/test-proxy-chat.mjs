@@ -208,7 +208,12 @@ test("native Responses proxy logs final stream usage", async () => {
 	try {
 		const response = await fetch(`${proxy.baseUrl}/responses`, {
 			method: "POST",
-			headers: { authorization: "Bearer test-key", "content-type": "application/json" },
+			headers: {
+				authorization: "Bearer test-key",
+				"content-type": "application/json",
+				"session-id": "session-usage",
+				"x-client-request-id": "client-usage",
+			},
 			body: JSON.stringify({
 				model: "grok-4.7",
 				stream: true,
@@ -223,6 +228,12 @@ test("native Responses proxy logs final stream usage", async () => {
 		assert.equal(usage.detail.outputTokens, 227);
 		assert.equal(usage.detail.cachedInputTokens, 571520);
 		assert.equal(usage.detail.reasoningTokens, 79);
+		assert.match(usage.detail.traceId, /^[0-9a-f-]{36}$/);
+		assert.equal(usage.detail.sessionId, "session-usage");
+		assert.equal(usage.detail.clientRequestId, "client-usage");
+		assert.equal(usage.detail.requestedModel, "grok-4.7");
+		assert.equal(usage.detail.stream, true);
+		assert.equal(usage.detail.status, 200);
 	} finally {
 		await proxy.close();
 		await close(upstream);

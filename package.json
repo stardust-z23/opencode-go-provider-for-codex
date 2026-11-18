@@ -17,7 +17,7 @@
 		"type": "git",
 		"url": "https://github.com/stardust-z23/opencode-go-provider-for-codex"
 	},
-	"version": "0.1.22",
+	"version": "0.1.23",
 	"engines": {
 		"vscode": "^1.116.0"
 	},
@@ -64,6 +64,12 @@
 				"category": "%commandCategory%",
 				"title": "%command.checkUsage%",
 				"icon": "$(pulse)"
+			},
+			{
+				"command": "codexgo.openUsageDashboard",
+				"category": "%commandCategory%",
+				"title": "%command.openUsageDashboard%",
+				"icon": "$(graph)"
 			},
 			{
 				"command": "codexgo.openCodexConfig",
@@ -201,7 +207,7 @@
 		"clean": "node scripts/clean-out.mjs",
 		"compile": "npm run clean && tsc -p ./",
 		"watch": "tsc -watch -p ./",
-		"test": "npm run compile && node scripts/test-toml-edit.mjs && node scripts/test-model-merge.mjs && node scripts/test-catalog.mjs && node scripts/test-go-usage.mjs && node scripts/test-proxy-chat.mjs && node scripts/test-proxy-anthropic.mjs",
+		"test": "npm run compile && node scripts/test-toml-edit.mjs && node scripts/test-model-merge.mjs && node scripts/test-catalog.mjs && node scripts/test-go-usage.mjs && node scripts/test-usage-stats.mjs && node --check resources/usage-dashboard/dashboard.js && node scripts/test-proxy-chat.mjs && node scripts/test-proxy-anthropic.mjs",
 		"test:e2e": "npm run compile && node scripts/test-codex-e2e.mjs",
 		"test:live": "npm run compile && node scripts/test-codex-live.mjs",
 		"test:binding": "node scripts/test-thinking-binding-live.mjs",

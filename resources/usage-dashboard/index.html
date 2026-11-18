@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="{{lang}}">
+	<head>
+		<meta charset="UTF-8" />
+		<meta
+			http-equiv="Content-Security-Policy"
+			content="default-src 'none'; style-src {{cspSource}} 'unsafe-inline'; img-src {{cspSource}} data:; script-src 'nonce-{{nonce}}';"
+		/>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<link rel="stylesheet" href="{{styleUri}}" />
+		<title>OpenCode Go</title>
+	</head>
+	<body>
+		<header class="page-header">
+			<div class="title-block">
+				<h1 id="page-title">OpenCode Go</h1>
+				<span id="page-meta" class="muted"></span>
+			</div>
+			<button
+				id="menu-button"
+				class="icon-button"
+				type="button"
+				aria-haspopup="menu"
+				aria-expanded="false"
+			>
+				<span aria-hidden="true">&#x22EF;</span>
+			</button>
+			<div id="action-menu" class="action-menu" role="menu" hidden>
+				<button type="button" role="menuitem" data-action="refreshQuota"></button>
+				<div class="menu-separator" role="separator"></div>
+				<button type="button" role="menuitem" data-action="setApiKey"></button>
+				<button type="button" role="menuitem" data-action="getApiKey"></button>
+				<div class="menu-separator" role="separator"></div>
+				<button type="button" role="menuitem" data-action="syncModels"></button>
+				<button type="button" role="menuitem" data-action="removeCatalog"></button>
+				<div class="menu-separator" role="separator"></div>
+				<button type="button" role="menuitem" data-action="openConfig"></button>
+				<button type="button" role="menuitem" data-action="openSettings"></button>
+				<div class="menu-separator" role="separator"></div>
+				<button type="button" role="menuitem" data-action="reloadWindow"></button>
+			</div>
+		</header>
+
+		<main>
+			<section class="usage-section quota-section" aria-labelledby="quota-title">
+				<div class="section-heading">
+					<h2 id="quota-title"></h2>
+					<span id="quota-state" class="state-label"></span>
+				</div>
+				<div id="quota-rows" class="quota-rows"></div>
+				<div id="quota-meta" class="section-meta"></div>
+				<p id="quota-error" class="error-text" hidden></p>
+			</section>
+
+			<section class="usage-section requests-section" aria-labelledby="requests-title">
+				<div class="section-heading section-heading-wrap">
+					<h2 id="requests-title"></h2>
+					<div class="filters">
+						<div id="range-control" class="segmented-control" role="group"></div>
+						<label class="select-control">
+							<span id="model-label" class="sr-only"></span>
+							<select id="model-filter"></select>
+						</label>
+						<label class="select-control">
+							<span id="status-label" class="sr-only"></span>
+							<select id="status-filter"></select>
+						</label>
+					</div>
+				</div>
+
+				<div id="summary-metrics" class="metric-strip"></div>
+				<div id="token-metrics" class="submetric-strip"></div>
+
+				<div class="trend-panel">
+					<div class="trend-heading">
+						<h3 id="trend-title"></h3>
+						<div id="trend-control" class="segmented-control compact" role="group"></div>
+					</div>
+					<svg
+						id="trend-chart"
+						class="trend-chart"
+						viewBox="0 0 760 180"
+						role="img"
+						aria-labelledby="trend-title"
+					></svg>
+				</div>
+
+				<div id="cache-alert" class="cache-alert" hidden>
+					<div>
+						<strong id="cache-alert-title"></strong>
+						<span id="cache-alert-detail"></span>
+					</div>
+				</div>
+
+				<div class="table-heading">
+					<h3 id="recent-title"></h3>
+					<span id="table-meta" class="muted"></span>
+				</div>
+				<div class="table-frame">
+					<table>
+						<thead>
+							<tr id="table-head"></tr>
+						</thead>
+						<tbody id="table-body"></tbody>
+					</table>
+					<div id="empty-state" class="empty-state" hidden></div>
+				</div>
+			</section>
+		</main>
+
+		<script nonce="{{nonce}}" src="{{scriptUri}}"></script>
+	</body>
+</html>

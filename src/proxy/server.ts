@@ -69,6 +69,11 @@ interface ProxyRequestContext {
 	apiKey: string;
 	wireApi: ProxyWireApi;
 	startedAt: number;
+	traceId: string;
+	requestedModel: string;
+	sessionId?: string;
+	clientRequestId?: string;
+	stream: boolean;
 }
 
 interface ToolState {
@@ -416,7 +421,21 @@ async function handleProxyRequest(
 		});
 	}
 
-	const context: ProxyRequestContext = { body, apiKey, wireApi, startedAt };
+	const context: ProxyRequestContext = {
+		body,
+		apiKey,
+		wireApi,
+		startedAt,
+		traceId: randomUUID(),
+		requestedModel: modelId,
+		sessionId:
+			headerValue(req.headers["session-id"]) ??
+			headerValue(req.headers["thread-id"]),
+		clientRequestId:
+			headerValue(req.headers["x-client-request-id"]) ??
+			headerValue(req.headers["x-request-id"]),
+		stream: body.stream !== false,
+	};
 	if (wireApi !== "responses" && hasCompactionTrigger(body)) {
 		res.writeHead(501, { "content-type": "application/json" });
 		res.end(
@@ -497,7 +516,7 @@ function mapCodexEffortToUpstream(
 
 function reportResponsesUsage(
 	options: LocalProxyOptions,
-	context: Pick<ProxyRequestContext, "body" | "wireApi" | "startedAt">,
+	context: ProxyRequestContext,
 	purpose: string,
 	usage: Record<string, unknown> | undefined,
 ): void {
@@ -507,15 +526,9 @@ function reportResponsesUsage(
 	const inputDetails = isRecord(usage.input_tokens_details) ? usage.input_tokens_details : {};
 	const outputDetails = isRecord(usage.output_tokens_details) ? usage.output_tokens_details : {};
 	options.log?.("proxy.usage", {
+		...requestLogIdentity(context),
 		purpose,
-		protocol: context.wireApi,
-		model: typeof context.body.model === "string" ? context.body.model : undefined,
-		requestId: typeof context.body.request_id === "string" ? context.body.request_id : undefined,
-		previousResponseId:
-			typeof context.body.previous_response_id === "string"
-				? context.body.previous_response_id
-				: undefined,
-		startedAt: new Date(context.startedAt).toISOString(),
+		status: 200,
 		durationMs: Date.now() - context.startedAt,
 		inputTokens: numberValue(usage.input_tokens),
 		outputTokens: numberValue(usage.output_tokens),
@@ -528,19 +541,34 @@ function reportResponsesUsage(
 
 function reportUpstreamError(
 	options: LocalProxyOptions,
-	context: Pick<ProxyRequestContext, "body" | "wireApi" | "startedAt">,
+	context: ProxyRequestContext,
 	upstream: Response,
 	detail: string,
 ): void {
 	options.log?.("proxy.upstream_error", {
-		protocol: context.wireApi,
-		model: typeof context.body.model === "string" ? context.body.model : undefined,
+		...requestLogIdentity(context),
 		status: upstream.status,
-		requestId: upstream.headers.get("x-request-id") ?? undefined,
-		startedAt: new Date(context.startedAt).toISOString(),
 		durationMs: Date.now() - context.startedAt,
 		detail: detail.slice(0, 2000),
 	});
+}
+
+function requestLogIdentity(context: ProxyRequestContext): Record<string, unknown> {
+	return {
+		traceId: context.traceId,
+		protocol: context.wireApi,
+		model: typeof context.body.model === "string" ? context.body.model : undefined,
+		requestedModel: context.requestedModel,
+		requestId: typeof context.body.request_id === "string" ? context.body.request_id : undefined,
+		clientRequestId: context.clientRequestId,
+		previousResponseId:
+			typeof context.body.previous_response_id === "string"
+				? context.body.previous_response_id
+				: undefined,
+		sessionId: context.sessionId,
+		stream: context.stream,
+		startedAt: new Date(context.startedAt).toISOString(),
+	};
 }
 
 function hasCompactionTrigger(body: Record<string, unknown>): boolean {
@@ -989,24 +1017,12 @@ async function proxyChatCompletions(
 	try {
 		await pipeChatSse(upstream, writer);
 		writer.finish();
-		options.log?.("proxy.usage", {
-			purpose: "chat/completions",
-			protocol: context.wireApi,
-			model: typeof context.body.model === "string" ? context.body.model : undefined,
-			startedAt: new Date(context.startedAt).toISOString(),
-			durationMs: Date.now() - context.startedAt,
-			inputTokens: numberValue(writer.usageSummary().input_tokens),
-			outputTokens: numberValue(writer.usageSummary().output_tokens),
-			totalTokens: numberValue(writer.usageSummary().total_tokens),
-			cachedInputTokens: numberValue(
-				(writer.usageSummary().input_tokens_details as Record<string, unknown> | undefined)
-					?.cached_tokens,
-			),
-			reasoningTokens: numberValue(
-				(writer.usageSummary().output_tokens_details as Record<string, unknown> | undefined)
-					?.reasoning_tokens,
-			),
-		});
+		reportResponsesUsage(
+			options,
+			context,
+			"chat/completions",
+			writer.usageSummary(),
+		);
 	} catch (error) {
 		writer.fail(error instanceof Error ? error.message : String(error));
 	}

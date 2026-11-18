@@ -7,6 +7,7 @@
 	"command.setApiKey": "Set OpenCode Go API Key",
 	"command.getApiKey": "Get OpenCode Go API Key",
 	"command.checkUsage": "Check OpenCode Go Usage",
+	"command.openUsageDashboard": "Open OpenCode Go Usage Dashboard",
 	"command.openCodexConfig": "Open Codex config.toml",
 	"command.openSettings": "Open OpenCode Go for Codex Settings",
 	"walkthrough.title": "Get started with OpenCode Go for Codex",

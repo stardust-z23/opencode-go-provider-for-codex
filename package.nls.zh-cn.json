@@ -7,6 +7,7 @@
 	"command.setApiKey": "设置 OpenCode Go API 密钥",
 	"command.getApiKey": "获取 OpenCode Go API 密钥",
 	"command.checkUsage": "查看 OpenCode Go 额度",
+	"command.openUsageDashboard": "打开 OpenCode Go 使用统计",
 	"command.openCodexConfig": "打开 Codex config.toml",
 	"command.openSettings": "打开 OpenCode Go for Codex 设置",
 	"walkthrough.title": "开始使用 OpenCode Go for Codex",

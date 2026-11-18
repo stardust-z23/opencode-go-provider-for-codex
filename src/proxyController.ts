@@ -14,6 +14,7 @@ import { logger } from "./logger";
 import { ensureCatalogLoadedOnce, getGoCatalogFacts } from "./modelsDev";
 import { protocolAliasForId } from "./protocolVariants";
 import { OPENCODE_GO_BASE_URL, OPENCODE_GO_PROVIDER } from "./tomlEdit";
+import { getUsageStore } from "./usageService";
 
 type LocalProxyState = "off" | "starting" | "on" | "error";
 
@@ -176,7 +177,7 @@ async function enableProxy(userInitiated: boolean): Promise<void> {
 				return key ? deriveProxyToken(key) : undefined;
 			},
 			resolveModel: resolveModelRoute,
-			log: (message, detail) => logger.debug("proxy.request", { message, ...detail }),
+			log: logProxyEvent,
 		});
 		updateStatus({
 			state: "on",
@@ -223,7 +224,7 @@ async function restartProxy(): Promise<void> {
 				return key ? deriveProxyToken(key) : undefined;
 			},
 			resolveModel: resolveModelRoute,
-			log: (message, detail) => logger.debug("proxy.request", { message, ...detail }),
+			log: logProxyEvent,
 		});
 		updateStatus({
 			state: "on",
@@ -330,4 +331,9 @@ function apiKeyContext(ctx: vscode.ExtensionContext): ApiKeyContext {
 	return {
 		secrets: ctx.secrets,
 	};
+}
+
+function logProxyEvent(message: string, detail?: Record<string, unknown>): void {
+	logger.debug("proxy.request", { message, ...detail });
+	getUsageStore()?.handleProxyLog(message, detail);
 }
