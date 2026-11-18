@@ -1,5 +1,12 @@
 :root {
 	color-scheme: light dark;
+	--section-divider: color-mix(
+		in srgb,
+		var(--vscode-foreground) 28%,
+		transparent
+	);
+	--grid-divider: color-mix(in srgb, var(--vscode-foreground) 14%, transparent);
+	--row-divider: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
 }
 
 * {
@@ -55,7 +62,7 @@ button {
 	min-height: 56px;
 	padding: 8px 20px;
 	background: var(--vscode-editor-background);
-	border-bottom: 1px solid var(--vscode-panel-border);
+	border-bottom: 1px solid var(--section-divider);
 }
 
 .title-block {
@@ -187,7 +194,7 @@ main {
 
 .usage-section {
 	padding: 18px 0 20px;
-	border-bottom: 1px solid var(--vscode-panel-border);
+	border-bottom: 1px solid var(--section-divider);
 }
 
 .section-heading {
@@ -343,8 +350,8 @@ main {
 .metric-strip {
 	display: grid;
 	grid-template-columns: repeat(4, minmax(0, 1fr));
-	border-top: 1px solid var(--vscode-panel-border);
-	border-bottom: 1px solid var(--vscode-panel-border);
+	border-top: 1px solid var(--grid-divider);
+	border-bottom: 1px solid var(--grid-divider);
 }
 
 .metric {
@@ -354,7 +361,7 @@ main {
 
 .metric + .metric {
 	padding-left: 14px;
-	border-left: 1px solid var(--vscode-panel-border);
+	border-left: 1px solid var(--grid-divider);
 }
 
 .metric-label {
@@ -378,7 +385,7 @@ main {
 	display: grid;
 	grid-template-columns: repeat(6, minmax(0, 1fr));
 	padding: 10px 0;
-	border-bottom: 1px solid var(--vscode-panel-border);
+	border-bottom: 1px solid var(--grid-divider);
 }
 
 .submetric {
@@ -391,7 +398,7 @@ main {
 }
 
 .submetric + .submetric {
-	border-left: 1px solid var(--vscode-panel-border);
+	border-left: 1px solid var(--grid-divider);
 }
 
 .submetric-label {
@@ -485,7 +492,7 @@ main {
 .table-frame {
 	position: relative;
 	overflow-x: auto;
-	border-top: 1px solid var(--vscode-panel-border);
+	border-top: 1px solid var(--grid-divider);
 }
 
 table {
@@ -498,7 +505,7 @@ table {
 th,
 td {
 	padding: 7px 9px;
-	border-bottom: 1px solid var(--vscode-panel-border);
+	border-bottom: 1px solid var(--row-divider);
 	text-align: right;
 	white-space: nowrap;
 }
@@ -506,10 +513,15 @@ td {
 th {
 	position: sticky;
 	top: 0;
-	background: var(--vscode-editor-background);
+	background: color-mix(
+		in srgb,
+		var(--vscode-foreground) 5%,
+		var(--vscode-editor-background)
+	);
 	color: var(--vscode-descriptionForeground);
 	font-size: 10px;
 	font-weight: 600;
+	border-bottom-color: var(--grid-divider);
 }
 
 th:first-child,
@@ -524,6 +536,14 @@ td {
 }
 
 tbody tr:hover {
+	background: var(--vscode-list-hoverBackground);
+}
+
+tbody tr:nth-child(even) {
+	background: color-mix(in srgb, var(--vscode-foreground) 2.5%, transparent);
+}
+
+tbody tr:nth-child(even):hover {
 	background: var(--vscode-list-hoverBackground);
 }
 
@@ -612,11 +632,11 @@ tbody tr:hover {
 	.metric:nth-child(3) {
 		padding-left: 0;
 		border-left: 0;
-		border-top: 1px solid var(--vscode-panel-border);
+		border-top: 1px solid var(--grid-divider);
 	}
 
 	.metric:nth-child(4) {
-		border-top: 1px solid var(--vscode-panel-border);
+		border-top: 1px solid var(--grid-divider);
 	}
 
 	.submetric-strip {

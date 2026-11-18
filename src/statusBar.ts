@@ -311,10 +311,22 @@ function renderUsageContent(): void {
 	}
 	const cache = getUsageStore()?.getStatusSummary();
 	if (cache && cache.requests > 0 && cache.cacheHitRate !== null) {
+		const scope =
+			cache.scope === "session"
+				? l10nFormat(
+						"Current session ({0}): {1} successful requests",
+						cache.model ?? "?",
+						String(cache.requests),
+					)
+				: l10nFormat(
+						"Last hour ({0}): {1} successful requests",
+						cache.model ?? "?",
+						String(cache.requests),
+					);
 		md.appendMarkdown(
 			`\n${l10nFormat(
-				"Local requests: {0} · Cache hit: {1}",
-				String(cache.requests),
+				"{0} · Cache hit: {1}",
+				scope,
 				formatPercent(cache.cacheHitRate * 100),
 			)}\n`,
 		);

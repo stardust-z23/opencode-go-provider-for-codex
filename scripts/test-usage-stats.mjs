@@ -175,13 +175,44 @@ test("status summary follows the latest session", () => {
 				id: "b",
 				startedAt: 2_000,
 				sessionId: "session-b",
+				model: "glm-5.3",
 				freshInputTokens: 200,
 				cacheReadTokens: 200,
 			}),
 		],
 		2_500,
 	);
+	assert.equal(summary.scope, "session");
 	assert.equal(summary.sessionId, "session-b");
+	assert.equal(summary.model, "glm-5.3");
+	assert.equal(summary.requests, 1);
+	assert.equal(summary.cacheHitRate, 0.5);
+});
+
+test("status summary does not mix models in one session", () => {
+	const summary = usage.getCacheStatusSummary(
+		[
+			record({
+				id: "model-a",
+				startedAt: 1_000,
+				sessionId: "shared-session",
+				model: "deepseek-v4.1-flash",
+				freshInputTokens: 100,
+				cacheReadTokens: 900,
+			}),
+			record({
+				id: "model-b",
+				startedAt: 2_000,
+				sessionId: "shared-session",
+				model: "glm-5.3",
+				freshInputTokens: 300,
+				cacheReadTokens: 300,
+			}),
+		],
+		2_500,
+	);
+	assert.equal(summary.scope, "session");
+	assert.equal(summary.model, "glm-5.3");
 	assert.equal(summary.requests, 1);
 	assert.equal(summary.cacheHitRate, 0.5);
 });

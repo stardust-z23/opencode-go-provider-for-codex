@@ -72,7 +72,9 @@ export interface UsageDashboardSnapshot {
 }
 
 export interface CacheStatusSummary {
+	scope: "session" | "lastHour";
 	sessionId?: string;
+	model?: string;
 	requests: number;
 	cacheHitRate: number | null;
 }
@@ -379,19 +381,19 @@ export function getCacheStatusSummary(
 	now = Date.now(),
 ): CacheStatusSummary {
 	const descending = [...records].sort((left, right) => right.startedAt - left.startedAt);
-	const latestWithSession = descending.find(
-		(record) => record.success && record.sessionId,
-	);
-	const selected = latestWithSession
+	const latest = descending.find((record) => record.success);
+	const selected = latest?.sessionId
 		? descending.filter(
 				(record) =>
 					record.success &&
-					record.sessionId === latestWithSession.sessionId &&
+					record.sessionId === latest.sessionId &&
+					record.model === latest.model &&
 					record.startedAt <= now,
 			)
 		: descending.filter(
 				(record) =>
 					record.success &&
+					record.model === latest?.model &&
 					record.startedAt >= now - HOUR_MS &&
 					record.startedAt <= now,
 			);
@@ -399,7 +401,9 @@ export function getCacheStatusSummary(
 	const read = selected.reduce((sum, record) => sum + record.cacheReadTokens, 0);
 	const write = selected.reduce((sum, record) => sum + record.cacheWriteTokens, 0);
 	return {
-		sessionId: latestWithSession?.sessionId,
+		scope: latest?.sessionId ? "session" : "lastHour",
+		sessionId: latest?.sessionId,
+		model: latest?.model,
 		requests: selected.length,
 		cacheHitRate: cacheHitRate(fresh, read, write),
 	};
