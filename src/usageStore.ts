@@ -27,6 +27,7 @@ export class UsageStore {
 	private readonly records = new Map<string, UsageRecord>();
 	private readonly listeners = new Set<() => void>();
 	private writeQueue: Promise<void> = Promise.resolve();
+	private lastReloadSignature: string | undefined;
 
 	constructor(storageRoot: string, options: UsageStoreOptions = {}) {
 		this.usageDir = path.join(storageRoot, "usage");
@@ -39,10 +40,16 @@ export class UsageStore {
 		await this.reload();
 	}
 
-	async reload(): Promise<void> {
+	async reload(force = false): Promise<void> {
 		await this.writeQueue;
 		const files = await this.listFiles();
 		const selected = files.slice(0, LOAD_DAYS);
+		const signature = selected
+			.map((file) => `${file.name}:${file.size}:${file.mtimeMs}`)
+			.join("|");
+		if (!force && signature === this.lastReloadSignature) {
+			return;
+		}
 		const loaded = new Map<string, UsageRecord>();
 		for (const file of selected) {
 			let text = "";
@@ -76,6 +83,7 @@ export class UsageStore {
 		for (const record of newest) {
 			this.records.set(record.id, record);
 		}
+		this.lastReloadSignature = signature;
 		this.notify();
 	}
 
@@ -193,15 +201,17 @@ export class UsageStore {
 		}
 	}
 
-	private async listFiles(): Promise<Array<{ name: string; size: number }>> {
+	private async listFiles(): Promise<
+		Array<{ name: string; size: number; mtimeMs: number }>
+	> {
 		const entries = await fs.readdir(this.usageDir, { withFileTypes: true });
-		const files: Array<{ name: string; size: number }> = [];
+		const files: Array<{ name: string; size: number; mtimeMs: number }> = [];
 		for (const entry of entries) {
 			if (!entry.isFile() || !/^\d{4}-\d{2}-\d{2}\.jsonl$/.test(entry.name)) {
 				continue;
 			}
 			const stat = await fs.stat(path.join(this.usageDir, entry.name));
-			files.push({ name: entry.name, size: stat.size });
+			files.push({ name: entry.name, size: stat.size, mtimeMs: stat.mtimeMs });
 		}
 		return files.sort((left, right) => right.name.localeCompare(left.name));
 	}

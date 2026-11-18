@@ -112,6 +112,29 @@ h3 {
 	line-height: 1;
 }
 
+.header-actions {
+	display: flex;
+	align-items: center;
+	flex-shrink: 0;
+	gap: 2px;
+}
+
+.icon-button.refreshing span {
+	animation: refresh-spin 700ms linear;
+}
+
+@keyframes refresh-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.icon-button.refreshing span {
+		animation: none;
+	}
+}
+
 .icon-button:hover,
 .icon-button:focus-visible {
 	background: var(--vscode-toolbar-hoverBackground);

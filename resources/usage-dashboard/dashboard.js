@@ -22,6 +22,7 @@
 	let generatedAt = Date.now();
 
 	const byId = (id) => document.getElementById(id);
+	const refreshButton = byId("refresh-button");
 	const menuButton = byId("menu-button");
 	const actionMenu = byId("action-menu");
 	const numberCompact = new Intl.NumberFormat(locale, {
@@ -63,6 +64,13 @@
 		render();
 	});
 
+	refreshButton.addEventListener("click", () => {
+		refreshButton.classList.remove("refreshing");
+		void refreshButton.offsetWidth;
+		refreshButton.classList.add("refreshing");
+		setTimeout(() => refreshButton.classList.remove("refreshing"), 750);
+		vscode.postMessage({ type: "action", action: "refreshAll" });
+	});
 	menuButton.addEventListener("click", () => {
 		setMenuOpen(actionMenu.hidden);
 	});
@@ -114,6 +122,8 @@
 		byId("status-label").textContent = labels.status;
 		menuButton.title = labels.moreActions;
 		menuButton.setAttribute("aria-label", labels.moreActions);
+		refreshButton.title = labels.refreshNow;
+		refreshButton.setAttribute("aria-label", labels.refreshNow);
 		const actionLabels = {
 			refreshQuota: labels.refreshQuota,
 			setApiKey: labels.setApiKey,

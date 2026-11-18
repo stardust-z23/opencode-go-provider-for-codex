@@ -145,6 +145,12 @@ async function openUsageDashboard(
 
 	async function runAction(action: string): Promise<void> {
 		switch (action) {
+			case "refreshAll":
+				await Promise.allSettled([
+					store.reload(true),
+					refreshGoUsageNow(false),
+				]);
+				return;
 			case "refreshQuota":
 				await refreshGoUsageNow(false);
 				return;
@@ -274,6 +280,7 @@ function usageLabels(): Record<string, string> {
 		resetIn: l10n("Resets in {0}"),
 		balanceFallback: l10n("After the Go quota runs out, usage falls back to your balance."),
 		refreshQuota: l10n("Refresh quota"),
+		refreshNow: l10n("Refresh now"),
 		setApiKey: l10n("Set API key"),
 		getApiKey: l10n("Get API key"),
 		syncModels: l10n("Sync models"),

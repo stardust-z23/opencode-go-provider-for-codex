@@ -122,6 +122,7 @@ const zhCN: Record<string, string> = {
 	"Auto refresh: {0} min": "自动刷新：{0} 分钟",
 	"Resets in {0}": "{0} 后重置",
 	"Refresh quota": "刷新额度",
+	"Refresh now": "立即刷新",
 	"Get API key": "获取 API 密钥",
 	"Remove generated model catalog": "移除生成的模型目录",
 	"Open settings": "打开设置",
