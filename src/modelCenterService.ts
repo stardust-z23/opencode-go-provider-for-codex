@@ -2,12 +2,9 @@ import { promises as fs } from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { logger } from "./logger";
-import { getUsageStore } from "./usageService";
 import { getUserAgent } from "./utils";
 import {
-	detectPlanFromBillingSource,
 	diffModelCatalogs,
-	type GoPlan,
 	type ModelCatalogSnapshot,
 	type ModelChange,
 	normalizeModelCatalog,
@@ -39,13 +36,6 @@ export interface AutoSyncResult {
 	count?: number;
 }
 
-export interface ModelCenterPlanState {
-	detected?: GoPlan;
-	selected?: GoPlan;
-	effective: GoPlan;
-	source: "detected" | "selected" | "default";
-}
-
 export interface ModelCenterViewSnapshot {
 	models: ModelCatalogSnapshot["models"];
 	fetchedAt?: number;
@@ -54,7 +44,6 @@ export interface ModelCenterViewSnapshot {
 	unreadChangeIds: string[];
 	unreadNewsIds: string[];
 	unreadCount: number;
-	plan: ModelCenterPlanState;
 	lastModelFetchAt?: number;
 	lastNewsFetchAt?: number;
 	lastAutoSyncAt?: number;
@@ -88,7 +77,6 @@ interface PersistedModelCenterState {
 	newsBaselineEstablished: boolean;
 	newsEtag?: string;
 	newsLastModified?: string;
-	selectedPlan?: GoPlan;
 	lastModelFetchAt?: number;
 	lastNewsFetchAt?: number;
 	lastAutoSyncAt?: number;
@@ -118,7 +106,6 @@ export class ModelCenterService implements vscode.Disposable {
 	private refreshPromise: Promise<ModelCenterUpdateEvent | undefined> | undefined;
 	private refreshTimer: NodeJS.Timeout | undefined;
 	private startupTimer: NodeJS.Timeout | undefined;
-	private usageSubscription: vscode.Disposable | undefined;
 	private saveQueue: Promise<void> = Promise.resolve();
 	private disposed = false;
 	private refreshing = false;
@@ -142,7 +129,6 @@ export class ModelCenterService implements vscode.Disposable {
 		if (this.disposed || this.refreshTimer) {
 			return;
 		}
-		this.usageSubscription = getUsageStore()?.onDidChange(() => this.notify());
 		this.startupTimer = setTimeout(() => {
 			this.startupTimer = undefined;
 			void this.refreshNow(false);
@@ -162,22 +148,10 @@ export class ModelCenterService implements vscode.Disposable {
 			clearInterval(this.refreshTimer);
 			this.refreshTimer = undefined;
 		}
-		this.usageSubscription?.dispose();
-		this.usageSubscription = undefined;
 		this.listeners.clear();
 	}
 
 	getSnapshot(): ModelCenterViewSnapshot {
-		const detected = detectPlanFromBillingSource(
-			getUsageStore()?.getLatestBillingSource(),
-		);
-		const selected = this.state.selectedPlan;
-		const effective = selected ?? detected ?? "go";
-		const source = selected
-			? "selected"
-			: detected
-				? "detected"
-				: "default";
 		return {
 			models: this.state.snapshot?.models ?? [],
 			fetchedAt: this.state.snapshot?.fetchedAt,
@@ -188,12 +162,6 @@ export class ModelCenterService implements vscode.Disposable {
 			unreadCount:
 				this.state.unreadChangeIds.length +
 				this.state.unreadNewsIds.length,
-			plan: {
-				detected,
-				selected,
-				effective,
-				source,
-			},
 			lastModelFetchAt: this.state.lastModelFetchAt,
 			lastNewsFetchAt: this.state.lastNewsFetchAt,
 			lastAutoSyncAt: this.state.lastAutoSyncAt,
@@ -230,15 +198,6 @@ export class ModelCenterService implements vscode.Disposable {
 				this.notify();
 			});
 		return this.refreshPromise;
-	}
-
-	async setPlan(plan: GoPlan | undefined): Promise<void> {
-		this.state.selectedPlan =
-			plan === "go" || plan === "go-plus" || plan === "go-teams"
-				? plan
-				: undefined;
-		await this.saveState();
-		this.notify();
 	}
 
 	async markAllRead(notify = true): Promise<void> {
@@ -546,7 +505,6 @@ export class ModelCenterService implements vscode.Disposable {
 			newsBaselineEstablished: raw.newsBaselineEstablished === true,
 			newsEtag: stringValue(raw.newsEtag),
 			newsLastModified: stringValue(raw.newsLastModified),
-			selectedPlan: planValue(raw.selectedPlan),
 			lastModelFetchAt,
 			lastNewsFetchAt: numeric(raw.lastNewsFetchAt),
 			lastAutoSyncAt: numeric(raw.lastAutoSyncAt),
@@ -675,12 +633,6 @@ function parseAutoSync(value: unknown): AutoSyncResult | undefined {
 		detail: stringValue(value.detail),
 		count: numeric(value.count),
 	};
-}
-
-function planValue(value: unknown): GoPlan | undefined {
-	return value === "go" || value === "go-plus" || value === "go-teams"
-		? value
-		: undefined;
 }
 
 function stringArray(value: unknown): string[] {

@@ -19,14 +19,6 @@
 			<div class="header-actions">
 				<button id="official-button" class="link-button" type="button"></button>
 				<button
-					id="refresh-button"
-					class="icon-button"
-					type="button"
-					aria-label="Refresh"
-				>
-					<span aria-hidden="true">&#x21BB;</span>
-				</button>
-				<button
 					id="usage-button"
 					class="header-action-button"
 					type="button"
@@ -35,15 +27,22 @@
 					<span class="button-icon" aria-hidden="true">&#x2197;</span>
 					<span id="usage-button-label"></span>
 				</button>
+				<button
+					id="refresh-button"
+					class="icon-button"
+					type="button"
+					aria-label="Refresh"
+				>
+					<span aria-hidden="true">&#x21BB;</span>
+				</button>
 			</div>
 		</header>
 
 		<main>
-			<section class="control-band" aria-label="Plan">
+			<section class="control-band" aria-label="Plan allowances">
 				<div class="plan-control">
-					<strong id="plan-label"></strong>
-					<div id="plan-segments" class="segmented-control" role="group"></div>
-					<span id="plan-source" class="muted"></span>
+					<strong id="plan-legend-label"></strong>
+					<div id="plan-legend" class="plan-legend"></div>
 				</div>
 				<div id="unread-label" class="unread-label"></div>
 				<div class="mobile-official-links">

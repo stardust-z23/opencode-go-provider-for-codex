@@ -561,21 +561,6 @@ export function removeLegacyHydrationChangeBatches(
 	};
 }
 
-export function detectPlanFromBillingSource(
-	source: string | undefined,
-): GoPlan | undefined {
-	if (source === "go") {
-		return "go";
-	}
-	if (source === "go-plus") {
-		return "go-plus";
-	}
-	if (source === "go-teams") {
-		return "go-teams";
-	}
-	return undefined;
-}
-
 function decodeXml(value: string): string {
 	return value
 		.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")

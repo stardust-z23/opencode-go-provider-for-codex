@@ -289,7 +289,6 @@ test("UsageStore persists and reloads compact JSONL records", async () => {
 		assert.equal(snapshot.records[0].freshInputTokens, 300);
 		assert.equal(snapshot.records[0].sessionId, "session-persisted");
 		assert.equal(snapshot.records[0].billingSource, "go-plus");
-		assert.equal(reloaded.getLatestBillingSource(), "go-plus");
 	} finally {
 		await fs.rm(root, { recursive: true, force: true });
 	}

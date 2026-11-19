@@ -28,7 +28,7 @@
 | `src/usagePanel.ts` | 使用统计 Webview、筛选、维护菜单与消息桥 |
 | `src/usageService.ts` | 当前扩展实例的 usage store 单例 |
 | `src/modelCenterData.ts` | 公开模型解析、价格分档/倍率、目录 diff、RSS 解析 |
-| `src/modelCenterService.ts` | 每小时模型/RSS 拉取、90 天历史、未读状态与套餐推断 |
+| `src/modelCenterService.ts` | 每小时模型/RSS 拉取、90 天历史与未读状态 |
 | `src/modelCenterPanel.ts` | 模型中心 Webview、模型行投影、未读徽标与外部链接 |
 | `src/apiKey.ts` | SecretStorage 与旧环境变量的一次性迁移 |
 | `src/localize.ts` | 以英文原文为键的 zh-CN 字典 |
@@ -203,7 +203,7 @@ Codex 的模型选择器会用内部可见档位列表过滤目录，默认不�
 两者每小时刷新一次，RSS 使用 `ETag` / `Last-Modified` 条件请求。公开模型目录同时提供给模型同步与代理路由；模型中心首次成功拉取只建立基线，不发通知；之后模型新增、下线、月额度、价格、上下文限制、可用性、元数据变化和官方新条目会聚合为一条通知，并累计未读徽标。
 
 - 状态保存在 `<globalStorage>/model-center/state.json`，变更与消息保留 90 天。
-- `usage.opencode.billing_source` 的 `go` / `go-plus` 会用于自动选择套餐；没有稳定标记时默认 `go`，用户可手动选择 `go-teams`。
+- 月额度固定并列展示 Go、Go Plus、Go Teams，不提供套餐切换，也不标记当前套餐。
 - 模型界面同时展示基础价格、上下文 overrides、时间 multipliers、上下文/输出限制、训练/ZDR/地区标记。
 - 公开目录出现新模型时，`catalogSync.autoSyncModelCatalogForNewModels()` 只在以下条件同时满足时自动重建目录：Codex 的 `model_catalog_json` 指向本扩展文件、生成文件存在、API 密钥与本地代理就绪、Codex 可执行文件可探测。
 - 自动同步使用跨窗口锁文件，失败沿用原有回滚路径；价格与额度变化只提醒，不修改 Codex 目录。
@@ -213,7 +213,7 @@ Codex 的模型选择器会用内部可见档位列表过滤目录，默认不�
 - 原生 Responses 的 `response.completed` / `response.incomplete` usage 原样透传。
 - Chat Completions 会请求 `stream_options.include_usage`，并把 `prompt_tokens` / `completion_tokens`、缓存 token 与 reasoning token 换算成 Responses `usage`。
 - Anthropic Messages 会合并 `message_start` 与 `message_delta` 的 usage，并换算成同一结构。
-- 三条协议路径都会保留 `usage.opencode`，因此 `billing_source` 能进入本地 usage 记录，用于套餐推断。
+- 三条协议路径都会保留 `usage.opencode`，因此 `billing_source` 能进入本地 usage 记录用于诊断；它不再驱动模型中心展示。
 - Codex 因此可以获得每轮 input/output/total token 数。代理同时记录每个上游请求的 trace、会话头、耗时和 usage；扩展持久化最近 30 天的轻量统计，但不记录首 token 延迟或 tokens/s。
 
 ## 多窗口与端口

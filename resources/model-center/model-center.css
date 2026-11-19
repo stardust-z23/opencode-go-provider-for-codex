@@ -227,36 +227,39 @@ main {
 	white-space: nowrap;
 }
 
-#plan-source {
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	font-size: 11px;
+.plan-legend {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 12px;
 }
 
-.segmented-control {
+.plan-legend-item {
 	display: inline-flex;
 	align-items: center;
-	padding: 2px;
-	border: 1px solid var(--vscode-panel-border);
-	border-radius: 4px;
-	background: var(--vscode-editorWidget-background);
-}
-
-.segmented-control button {
-	height: 24px;
-	padding: 0 9px;
-	border: 0;
-	border-radius: 3px;
-	background: transparent;
 	color: var(--vscode-descriptionForeground);
 	white-space: nowrap;
 	font-size: 11px;
+	gap: 5px;
 }
 
-.segmented-control button[aria-pressed="true"] {
-	background: var(--vscode-button-secondaryBackground);
-	color: var(--vscode-button-secondaryForeground);
+.plan-legend-marker {
+	width: 8px;
+	height: 8px;
+	border-radius: 2px;
+	background: var(--vscode-descriptionForeground);
+}
+
+.plan-legend-item.plan-go .plan-legend-marker {
+	background: var(--vscode-charts-blue);
+}
+
+.plan-legend-item.plan-go-plus .plan-legend-marker {
+	background: var(--vscode-charts-yellow);
+}
+
+.plan-legend-item.plan-go-teams .plan-legend-marker {
+	background: var(--vscode-charts-green);
 }
 
 .unread-label,
@@ -631,52 +634,6 @@ tbody tr:nth-child(even):hover {
 	background: var(--vscode-charts-green);
 }
 
-.plan-limit.current {
-	position: relative;
-	color: var(--vscode-foreground);
-	margin-left: -5px;
-	padding: 2px 5px;
-	border-radius: 3px;
-	background: color-mix(
-		in srgb,
-		var(--vscode-focusBorder) 16%,
-		transparent
-	);
-	box-shadow: inset 2px 0 var(--vscode-focusBorder);
-}
-
-.plan-limit.plan-go.current {
-	background: color-mix(
-		in srgb,
-		var(--vscode-charts-blue) 18%,
-		transparent
-	);
-	box-shadow: inset 2px 0 var(--vscode-charts-blue);
-}
-
-.plan-limit.plan-go-plus.current {
-	background: color-mix(
-		in srgb,
-		var(--vscode-charts-yellow) 20%,
-		transparent
-	);
-	box-shadow: inset 2px 0 var(--vscode-charts-yellow);
-}
-
-.plan-limit.plan-go-teams.current {
-	background: color-mix(
-		in srgb,
-		var(--vscode-charts-green) 18%,
-		transparent
-	);
-	box-shadow: inset 2px 0 var(--vscode-charts-green);
-}
-
-.plan-limit.current .plan-name,
-.plan-limit.current .plan-value {
-	font-weight: 700;
-}
-
 .plan-name {
 	min-width: 44px;
 	font-size: 10px;
@@ -691,16 +648,6 @@ tbody tr:nth-child(even):hover {
 .plan-requests {
 	margin-left: 2px;
 	font-size: 9px;
-}
-
-.plan-current {
-	margin-left: auto;
-	padding: 1px 4px;
-	border-radius: 3px;
-	background: var(--vscode-badge-background);
-	color: var(--vscode-badge-foreground);
-	font-size: 8px;
-	font-weight: 600;
 }
 
 .secondary-line {
@@ -922,19 +869,6 @@ tbody tr:nth-child(even):hover {
 	.mobile-official-links {
 		width: 100%;
 		margin: -4px 0 7px;
-	}
-
-	#plan-source {
-		width: 100%;
-		white-space: normal;
-	}
-
-	.segmented-control {
-		max-width: 100%;
-	}
-
-	.segmented-control button {
-		padding-inline: 7px;
 	}
 
 	.models-toolbar {

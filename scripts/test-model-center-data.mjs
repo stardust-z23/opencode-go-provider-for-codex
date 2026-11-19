@@ -248,14 +248,6 @@ test("removes legacy hydration batches without deleting normal changes", () => {
 	);
 });
 
-test("detects supported billing sources", () => {
-	assert.equal(data.detectPlanFromBillingSource("go"), "go");
-	assert.equal(data.detectPlanFromBillingSource("go-plus"), "go-plus");
-	assert.equal(data.detectPlanFromBillingSource("go-teams"), "go-teams");
-	assert.equal(data.detectPlanFromBillingSource("balance"), undefined);
-	assert.equal(data.detectPlanFromBillingSource(undefined), undefined);
-});
-
 test("parses official RSS including CDATA and entities", () => {
 	const items = data.parseOfficialNewsFeed(`
 		<rss><channel>

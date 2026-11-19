@@ -131,7 +131,7 @@
 		if (!data) return;
 		renderLabels();
 		renderTabs();
-		renderPlan();
+		renderPlanLegend();
 		renderColumnsMenu();
 		renderMessages();
 		renderModels();
@@ -144,7 +144,7 @@
 		byId("page-subtitle").textContent = labels.subtitle;
 		byId("models-tab").textContent = labels.modelsTab;
 		byId("updates-tab").textContent = labels.updatesTab;
-		byId("plan-label").textContent = labels.plan;
+		byId("plan-legend-label").textContent = labels.planAllowances;
 		byId("official-button").textContent = labels.officialPage;
 		byId("mobile-official-button").textContent = labels.officialPage;
 		byId("refresh-button").title = labels.refresh;
@@ -173,40 +173,22 @@
 		byId("updates-panel").hidden = models;
 	}
 
-	function renderPlan() {
-		const segments = [
-			[undefined, labels.auto],
-			["go", labels.go],
-			["go-plus", labels.goPlus],
-			["go-teams", labels.goTeams],
-		];
-		const control = byId("plan-segments");
-		control.replaceChildren(
-			...segments.map(([value, label]) => {
-				const button = element("button", "", label);
-				button.type = "button";
-				button.setAttribute(
-					"aria-pressed",
-					String((data.plan.selected || undefined) === value),
+	function renderPlanLegend() {
+		const legend = byId("plan-legend");
+		legend.replaceChildren(
+			...[
+				["go", labels.go],
+				["go-plus", labels.goPlus],
+				["go-teams", labels.goTeams],
+			].map(([plan, label]) => {
+				const item = element("span", `plan-legend-item plan-${plan}`);
+				item.append(
+					element("span", "plan-legend-marker"),
+					element("span", "", label),
 				);
-				button.addEventListener("click", () =>
-					vscode.postMessage({ type: "setPlan", plan: value }),
-				);
-				return button;
+				return item;
 			}),
 		);
-		const source = byId("plan-source");
-		if (data.plan.source === "selected") {
-			source.textContent = formatTemplate(labels.manualPlan, [
-				planLabel(data.plan.effective),
-			]);
-		} else if (data.plan.source === "detected") {
-			source.textContent = formatTemplate(labels.detectedPlan, [
-				planLabel(data.plan.effective),
-			]);
-		} else {
-			source.textContent = labels.defaultPlan;
-		}
 		const unread = byId("unread-label");
 		unread.textContent =
 			data.unreadCount > 0
@@ -365,7 +347,7 @@
 			: "—";
 		byId("models-meta").textContent =
 			`${number.format(models.length)} ${labels.models} · ` +
-			`${planLabel(data.plan.effective)} · ${labels.priceUnit} · ` +
+			`${labels.priceUnit} · ` +
 			formatTemplate(labels.lastModelFetch, [refreshed]);
 		byId("refresh-button").disabled = data.refreshing === true;
 	}
@@ -404,7 +386,7 @@
 
 	function sortValue(model, key) {
 		if (key === "monthly") {
-			const value = model.monthlyUsage[data.plan.effective];
+			const value = model.monthlyUsage.go;
 			return typeof value === "number" ? value : null;
 		}
 		if (key === "input") return numericPrice(model.price.input);
@@ -485,10 +467,8 @@
 		const planRows = [
 			["go", labels.go],
 			["go-plus", labels.goPlus],
+			["go-teams", labels.goTeams],
 		];
-		if (data.plan.effective === "go-teams") {
-			planRows.push(["go-teams", labels.goTeams]);
-		}
 		const hasPlanQuota = planRows.some(
 			([plan]) => model.monthlyUsage[plan] !== null,
 		);
@@ -503,9 +483,6 @@
 					"div",
 					`plan-limit plan-${plan}`,
 				);
-				if (plan === data.plan.effective) {
-					line.classList.add("current");
-				}
 				line.append(
 					element("span", "plan-name", label),
 					element(
@@ -516,11 +493,6 @@
 							: formatPrice(model.monthlyUsage[plan]),
 					),
 				);
-				if (plan === data.plan.effective) {
-					line.append(
-						element("span", "plan-current", labels.current),
-					);
-				}
 				const requests = model.requestsPerFiveHours[plan];
 				if (requests !== null) {
 					line.append(
@@ -753,12 +725,6 @@
 			metadata: labels.metadata,
 		};
 		return labelsByKind[kind] || kind;
-	}
-
-	function planLabel(plan) {
-		if (plan === "go-plus") return labels.goPlus;
-		if (plan === "go-teams") return labels.goTeams;
-		return labels.go;
 	}
 
 	function formatPrice(value) {

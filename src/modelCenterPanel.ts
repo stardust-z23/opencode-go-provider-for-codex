@@ -17,7 +17,6 @@ import {
 interface ModelCenterMessage {
 	type?: string;
 	action?: string;
-	plan?: unknown;
 	url?: unknown;
 	modelId?: unknown;
 }
@@ -184,17 +183,6 @@ async function openModelCenter(
 			}
 			return;
 		}
-		if (message.type === "setPlan") {
-			const plan =
-				message.plan === "go" ||
-				message.plan === "go-plus" ||
-				message.plan === "go-teams"
-					? (message.plan as GoPlan)
-					: undefined;
-			await service.setPlan(plan);
-			postSnapshot();
-			return;
-		}
 		if (message.type === "openExternal") {
 			if (typeof message.url === "string") {
 				await openTrustedUrl(message.url);
@@ -334,14 +322,10 @@ function modelCenterLabels(): Record<string, string> {
 		openUsage: l10n("Usage dashboard"),
 		refresh: l10n("Refresh model data"),
 		refreshing: l10n("Refreshing..."),
-		plan: l10n("Plan"),
-		auto: l10n("Auto"),
+		planAllowances: l10n("Plan allowances"),
 		go: l10n("Go"),
 		goPlus: l10n("Go Plus"),
 		goTeams: l10n("Go Teams"),
-		detectedPlan: l10n("Detected from the latest request: {0}"),
-		defaultPlan: l10n("No billing plan detected; highlighting Go by default."),
-		manualPlan: l10n("Manual plan override: {0}"),
 		models: l10n("Models"),
 		featured: l10n("Featured"),
 		limitedTime: l10n("Free for a limited time"),
@@ -354,13 +338,11 @@ function modelCenterLabels(): Record<string, string> {
 		cacheRead: l10n("Cache read"),
 		cacheWrite: l10n("Cache write"),
 		output: l10n("Output"),
-		context: l10n("Context"),
 		contextLength: l10n("{0} context"),
 		outputLimit: l10n("{0} output"),
 		rules: l10n("Rules"),
 		availability: l10n("Availability"),
 		priceUnit: l10n("$ / 1M tokens"),
-		priceAt: l10n("Current: {0}"),
 		peakMultiplier: l10n("{0}x multiplier"),
 		contextTier: l10n("Above {0} context"),
 		utc: l10n("UTC"),
@@ -393,18 +375,14 @@ function modelCenterLabels(): Record<string, string> {
 		newValue: l10n("After"),
 		readOfficial: l10n("Read official announcement"),
 		lastModelFetch: l10n("Model data updated {0}"),
-		lastNewsFetch: l10n("Official news checked {0}"),
 		lastSyncSynced: l10n("Codex catalog auto-synced after new models appeared."),
 		lastSyncSkipped: l10n("Automatic catalog sync was skipped: {0}"),
 		lastSyncFailed: l10n("Automatic catalog sync failed: {0}"),
 		modelError: l10n("Model data is temporarily unavailable: {0}"),
 		newsError: l10n("Official news is temporarily unavailable: {0}"),
 		copyModelId: l10n("Copy Model ID"),
-		setApiKey: l10n("Set API key"),
-		syncModels: l10n("Sync models now"),
 		columns: l10n("Columns"),
 		showColumns: l10n("Show columns"),
-		current: l10n("Current"),
 		sortAscending: l10n("Sort ascending"),
 		sortDescending: l10n("Sort descending"),
 	};
