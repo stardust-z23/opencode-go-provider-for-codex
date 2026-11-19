@@ -69,9 +69,11 @@ p {
 }
 
 h1 {
+	overflow: hidden;
 	font-size: 17px;
 	font-weight: 600;
 	letter-spacing: 0;
+	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
@@ -118,6 +120,54 @@ h2 {
 	color: var(--vscode-textLink-foreground);
 	white-space: nowrap;
 	font-size: 11px;
+}
+
+.link-button {
+	height: 30px;
+	padding: 0 4px;
+	border: 0;
+	background: transparent;
+	color: var(--vscode-textLink-foreground);
+	white-space: nowrap;
+	font-size: 11px;
+}
+
+.link-button:hover,
+.link-button:focus-visible {
+	color: var(--vscode-textLink-activeForeground);
+	text-decoration: underline;
+	text-underline-offset: 3px;
+	outline: none;
+}
+
+.header-action-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	height: 30px;
+	padding: 0 9px;
+	border: 1px solid var(--vscode-button-border, var(--vscode-panel-border));
+	border-radius: 4px;
+	background: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+	gap: 5px;
+	white-space: nowrap;
+	font-size: 11px;
+}
+
+.header-action-button:hover,
+.header-action-button:focus-visible {
+	background: var(
+		--vscode-button-secondaryHoverBackground,
+		var(--vscode-toolbar-hoverBackground)
+	);
+	border-color: var(--vscode-focusBorder);
+	outline: none;
+}
+
+.button-icon {
+	font-size: 14px;
+	line-height: 1;
 }
 
 .icon-button:hover,
@@ -742,10 +792,12 @@ tbody tr:nth-child(even):hover {
 	display: flex;
 	align-items: baseline;
 	justify-content: space-between;
+	flex-wrap: wrap;
 	gap: 12px;
 }
 
 .update-title {
+	flex: 1 1 180px;
 	min-width: 0;
 	font-size: 12px;
 	font-weight: 600;
@@ -754,6 +806,7 @@ tbody tr:nth-child(even):hover {
 
 .update-time {
 	flex-shrink: 0;
+	margin-left: auto;
 	color: var(--vscode-descriptionForeground);
 	font-size: 10px;
 	white-space: nowrap;
@@ -813,12 +866,18 @@ tbody tr:nth-child(even):hover {
 	font-size: 10px;
 }
 
+@media (max-width: 1050px) {
+	.updates-layout {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+
 @media (max-width: 900px) {
 	#page-subtitle {
 		display: none;
 	}
 
-	.header-actions .text-button {
+	.header-actions .link-button {
 		display: none;
 	}
 

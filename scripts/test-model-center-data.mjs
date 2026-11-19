@@ -98,6 +98,18 @@ function model(overrides = {}) {
 	};
 }
 
+function change(id, detectedAt, modelId, kind) {
+	return {
+		id,
+		detectedAt,
+		kind,
+		modelId,
+		modelName: modelId,
+		title: kind,
+		details: [],
+	};
+}
+
 test("normalizes public model metadata", () => {
 	const normalized = data.normalizeModelInfo(model());
 	assert.ok(normalized);
@@ -129,6 +141,19 @@ test("detects free limited-time models", () => {
 	);
 	assert.ok(normalized);
 	assert.equal(normalized.limitedTime, true);
+});
+
+test("reloading a normalized snapshot does not erase metadata", () => {
+	const first = data.normalizeModelCatalog(
+		{ data: [model()] },
+		Date.parse("2026-11-19T00:00:00.000Z"),
+	);
+	const reloaded = data.normalizeModelCatalog(
+		{ data: first.models },
+		first.fetchedAt,
+	);
+	assert.deepEqual(reloaded.models, first.models);
+	assert.deepEqual(data.diffModelCatalogs(first, reloaded), []);
 });
 
 test("extracts context tiers and peak rules", () => {
@@ -201,6 +226,25 @@ test("builds deterministic model changes with stable categories", () => {
 	assert.deepEqual(
 		first.map((change) => change.id),
 		second.map((change) => change.id),
+	);
+});
+
+test("removes legacy hydration batches without deleting normal changes", () => {
+	const changes = [];
+	for (let index = 0; index < 12; index++) {
+		changes.push(
+			change(`meta-${index}`, 1_000, `model-${index}`, "metadata"),
+			change(`limit-${index}`, 1_000, `model-${index}`, "limits"),
+		);
+	}
+	changes.push(change("real-change", 2_000, "model-real", "pricing"));
+	const result = data.removeLegacyHydrationChangeBatches(changes);
+	assert.equal(result.removedChanges, 24);
+	assert.equal(result.removedModels, 12);
+	assert.equal(result.batches, 1);
+	assert.deepEqual(
+		result.changes.map((entry) => entry.id),
+		["real-change"],
 	);
 });
 

@@ -155,39 +155,78 @@ export function normalizeModelInfo(value: unknown): GoModelInfo | undefined {
 	const goRaw = isRecord(value.go) ? value.go : {};
 	const limit = isRecord(value.limit) ? value.limit : {};
 	const modalities = isRecord(value.modalities) ? value.modalities : {};
-	const monthlyUsage = planUsages(goRaw.monthly_usage);
+	const monthlyUsage = planUsages(
+		goRaw.monthly_usage ?? value.monthlyUsage,
+	);
+	const requestsPerFiveHours =
+		planRequests(goRaw.requests) ??
+		planRequests(value.requestsPerFiveHours);
 	const basePrice = isRecord(value.cost) ? getBasePrice(value.cost) : undefined;
 	return {
 		id,
 		name: optionalString(value.name) ?? id,
-		canonicalId: optionalString(value.canonical_id),
+		canonicalId:
+			optionalString(value.canonical_id) ??
+			optionalString(value.canonicalId),
 		family: optionalString(value.family),
-		ownedBy: optionalString(value.owned_by),
+		ownedBy:
+			optionalString(value.owned_by) ??
+			optionalString(value.ownedBy),
 		created: optionalNumber(value.created),
-		releaseDate: optionalString(value.release_date),
-		lastUpdated: optionalString(value.last_updated),
+		releaseDate:
+			optionalString(value.release_date) ??
+			optionalString(value.releaseDate),
+		lastUpdated:
+			optionalString(value.last_updated) ??
+			optionalString(value.lastUpdated),
 		description: optionalString(value.description),
-		recommendedApi: optionalString(value.recommended_api),
-		inputModalities: stringArray(modalities.input),
-		outputModalities: stringArray(modalities.output),
+		recommendedApi:
+			optionalString(value.recommended_api) ??
+			optionalString(value.recommendedApi),
+		inputModalities:
+			stringArray(modalities.input).length > 0
+				? stringArray(modalities.input)
+				: stringArray(value.inputModalities),
+		outputModalities:
+			stringArray(modalities.output).length > 0
+				? stringArray(modalities.output)
+				: stringArray(value.outputModalities),
 		openWeights:
 			typeof value.open_weights === "boolean"
 				? value.open_weights
-				: undefined,
-		contextLimit: optionalNumber(limit.context),
-		outputLimit: optionalNumber(limit.output),
+				: typeof value.openWeights === "boolean"
+					? value.openWeights
+					: undefined,
+		contextLimit:
+			optionalNumber(limit.context) ??
+			optionalNumber(value.contextLimit),
+		outputLimit:
+			optionalNumber(limit.output) ??
+			optionalNumber(value.outputLimit),
 		monthlyUsage,
-		requestsPerFiveHours: planRequests(goRaw.requests),
-		training: boolValue(goRaw.training),
-		zdr: boolValue(goRaw.zdr),
-		limitedRegions: boolValue(goRaw.limited_regions),
+		requestsPerFiveHours,
+		training:
+			typeof goRaw.training === "boolean"
+				? goRaw.training
+				: boolValue(value.training),
+		zdr:
+			typeof goRaw.zdr === "boolean"
+				? goRaw.zdr
+				: boolValue(value.zdr),
+		limitedRegions:
+			typeof goRaw.limited_regions === "boolean"
+				? goRaw.limited_regions
+				: boolValue(value.limitedRegions),
 		limitedTime:
 			monthlyUsage.go === null &&
 			monthlyUsage["go-plus"] === null &&
 			monthlyUsage["go-teams"] === null &&
 			basePrice?.input === 0 &&
 			basePrice.output === 0,
-		featured: boolValue(goRaw.featured),
+		featured:
+			typeof goRaw.featured === "boolean"
+				? goRaw.featured
+				: boolValue(value.featured),
 		deprecated:
 			value.deprecated === true ||
 			String(value.status ?? "").toLowerCase() === "deprecated",
@@ -357,7 +396,7 @@ export function diffModelCatalogs(
 
 		const limitDetails: ModelChangeDetail[] = [];
 		for (const key of ["contextLimit", "outputLimit"] as const) {
-			if (old[key] !== model[key]) {
+			if (old[key] !== undefined && old[key] !== model[key]) {
 				limitDetails.push({
 					path: key,
 					oldValue: old[key],
@@ -380,7 +419,7 @@ export function diffModelCatalogs(
 			"featured",
 			"deprecated",
 		] as const) {
-			if (old[key] !== model[key]) {
+			if (old[key] !== undefined && old[key] !== model[key]) {
 				availabilityDetails.push({
 					path: key,
 					oldValue: old[key],
@@ -421,8 +460,11 @@ export function diffModelCatalogs(
 			}
 		}
 		if (
-			stableStringify(old.capabilities) !== stableStringify(model.capabilities) ||
-			stableStringify(old.api) !== stableStringify(model.api)
+			(old.capabilities !== undefined &&
+				stableStringify(old.capabilities) !==
+					stableStringify(model.capabilities)) ||
+			(old.api !== undefined &&
+				stableStringify(old.api) !== stableStringify(model.api))
 		) {
 			metadataDetails.push(
 				{
@@ -474,6 +516,49 @@ export function diffModelCatalogs(
 	}
 
 	return changes;
+}
+
+export function removeLegacyHydrationChangeBatches(
+	changes: ModelChange[],
+): {
+	changes: ModelChange[];
+	removedChanges: number;
+	removedModels: number;
+	batches: number;
+} {
+	const byTimestamp = new Map<number, ModelChange[]>();
+	for (const change of changes) {
+		const batch = byTimestamp.get(change.detectedAt) ?? [];
+		batch.push(change);
+		byTimestamp.set(change.detectedAt, batch);
+	}
+	const suspicious = new Set<number>();
+	let removedChanges = 0;
+	let removedModels = 0;
+	for (const [detectedAt, batch] of byTimestamp) {
+		const models = new Set(batch.map((change) => change.modelId));
+		const metadata = batch.filter(
+			(change) =>
+				change.kind === "metadata" || change.kind === "limits",
+		).length;
+		if (
+			batch.length >= 20 &&
+			models.size >= 10 &&
+			metadata >= Math.ceil(batch.length / 2)
+		) {
+			suspicious.add(detectedAt);
+			removedChanges += batch.length;
+			removedModels = Math.max(removedModels, models.size);
+		}
+	}
+	return {
+		changes: changes.filter(
+			(change) => !suspicious.has(change.detectedAt),
+		),
+		removedChanges,
+		removedModels,
+		batches: suspicious.size,
+	};
 }
 
 export function detectPlanFromBillingSource(

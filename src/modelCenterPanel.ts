@@ -217,15 +217,8 @@ async function openModelCenter(
 						"codexgo.openUsageDashboard",
 					);
 					return;
-				case "openLimits":
-					await openTrustedUrl(
-						"https://opencode.ai/console/go#limits",
-					);
-					return;
-				case "openPricing":
-					await openTrustedUrl(
-						"https://opencode.ai/console/go#pricing",
-					);
+				case "openOfficialPage":
+					await openTrustedUrl("https://opencode.ai/console/go");
 					return;
 				case "syncModels":
 					await vscode.commands.executeCommand(
@@ -337,8 +330,7 @@ function modelCenterLabels(): Record<string, string> {
 		modelsTab: l10n("Models and pricing"),
 		updatesTab: l10n("Updates"),
 		search: l10n("Search models"),
-		officialLimits: l10n("Official limits"),
-		officialPricing: l10n("Official pricing"),
+		officialPage: l10n("Official page"),
 		openUsage: l10n("Usage dashboard"),
 		refresh: l10n("Refresh model data"),
 		refreshing: l10n("Refreshing..."),

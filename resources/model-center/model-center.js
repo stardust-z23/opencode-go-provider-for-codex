@@ -95,17 +95,11 @@
 	byId("usage-button").addEventListener("click", () =>
 		vscode.postMessage({ type: "action", action: "openUsage" }),
 	);
-	byId("limits-button").addEventListener("click", () =>
-		vscode.postMessage({ type: "action", action: "openLimits" }),
+	byId("official-button").addEventListener("click", () =>
+		vscode.postMessage({ type: "action", action: "openOfficialPage" }),
 	);
-	byId("pricing-button").addEventListener("click", () =>
-		vscode.postMessage({ type: "action", action: "openPricing" }),
-	);
-	byId("mobile-limits-button").addEventListener("click", () =>
-		vscode.postMessage({ type: "action", action: "openLimits" }),
-	);
-	byId("mobile-pricing-button").addEventListener("click", () =>
-		vscode.postMessage({ type: "action", action: "openPricing" }),
+	byId("mobile-official-button").addEventListener("click", () =>
+		vscode.postMessage({ type: "action", action: "openOfficialPage" }),
 	);
 	byId("model-search").addEventListener("input", (event) => {
 		state.search = event.target.value;
@@ -145,24 +139,19 @@
 	}
 
 	function renderLabels() {
+		document.title = labels.title;
 		byId("page-title").textContent = labels.title;
-		byId("page-subtitle").textContent =
-			data.fetchedAt === undefined
-				? labels.subtitle
-				: `${labels.subtitle} · ${formatTemplate(labels.lastModelFetch, [
-						dateTime.format(new Date(data.fetchedAt)),
-					])}`;
+		byId("page-subtitle").textContent = labels.subtitle;
 		byId("models-tab").textContent = labels.modelsTab;
 		byId("updates-tab").textContent = labels.updatesTab;
 		byId("plan-label").textContent = labels.plan;
-		byId("limits-button").textContent = labels.officialLimits;
-		byId("pricing-button").textContent = labels.officialPricing;
-		byId("mobile-limits-button").textContent = labels.officialLimits;
-		byId("mobile-pricing-button").textContent = labels.officialPricing;
+		byId("official-button").textContent = labels.officialPage;
+		byId("mobile-official-button").textContent = labels.officialPage;
 		byId("refresh-button").title = labels.refresh;
 		byId("refresh-button").setAttribute("aria-label", labels.refresh);
 		byId("usage-button").title = labels.openUsage;
 		byId("usage-button").setAttribute("aria-label", labels.openUsage);
+		byId("usage-button-label").textContent = labels.openUsage;
 		byId("model-search").placeholder = labels.search;
 		byId("columns-button").textContent = labels.columns;
 		byId("columns-button").title = labels.showColumns;

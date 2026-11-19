@@ -13,6 +13,7 @@ import {
 	normalizeModelCatalog,
 	type OfficialNewsItem,
 	parseOfficialNewsFeed,
+	removeLegacyHydrationChangeBatches,
 } from "./modelCenterData";
 import {
 	ensureOfficialCatalogLoaded,
@@ -28,6 +29,7 @@ const RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 const MAX_NEWS_ITEMS = 500;
 const MAX_CHANGE_ITEMS = 5_000;
 const AUTO_SYNC_LOCK_STALE_MS = 10 * 60 * 1000;
+const SNAPSHOT_REVISION = 2;
 
 export type AutoSyncStatus = "synced" | "skipped" | "failed";
 
@@ -77,6 +79,7 @@ interface ModelCenterServiceOptions {
 
 interface PersistedModelCenterState {
 	schemaVersion: 1;
+	snapshotRevision: number;
 	snapshot?: ModelCatalogSnapshot;
 	changes: ModelChange[];
 	news: OfficialNewsItem[];
@@ -132,6 +135,7 @@ export class ModelCenterService implements vscode.Disposable {
 		this.state = await this.loadState();
 		publishOfficialCatalogSnapshot(this.state.snapshot);
 		this.pruneState();
+		await this.saveState();
 	}
 
 	start(): void {
@@ -498,18 +502,35 @@ export class ModelCenterService implements vscode.Disposable {
 			fetchedAt !== undefined && models
 				? normalizeModelCatalog({ data: models }, fetchedAt)
 				: undefined;
+		const lastModelFetchAt = numeric(raw.lastModelFetchAt);
+		let changes = Array.isArray(raw.changes)
+			? raw.changes
+					.map(parseModelChange)
+					.filter(
+						(change): change is ModelChange =>
+							change !== undefined,
+					)
+			: [];
+		const snapshotRevision =
+			numeric(raw.snapshotRevision) ?? 1;
+		if (snapshotRevision < SNAPSHOT_REVISION) {
+			const migration = removeLegacyHydrationChangeBatches(changes);
+			changes = migration.changes;
+			if (migration.removedChanges > 0) {
+				logger.info("modelCenter.changes.legacyBaselineRemoved", {
+					changes: migration.removedChanges,
+					models: migration.removedModels,
+					batches: migration.batches,
+				});
+			}
+		}
+		const changeIds = new Set(changes.map((change) => change.id));
 		return {
 			schemaVersion: 1,
+			snapshotRevision: SNAPSHOT_REVISION,
 			snapshot:
 				snapshot && snapshot.models.length > 0 ? snapshot : undefined,
-			changes: Array.isArray(raw.changes)
-				? raw.changes
-						.map(parseModelChange)
-						.filter(
-							(change): change is ModelChange =>
-								change !== undefined,
-						)
-				: [],
+			changes,
 			news: Array.isArray(raw.news)
 				? raw.news
 						.map(parseNewsItem)
@@ -518,13 +539,15 @@ export class ModelCenterService implements vscode.Disposable {
 								item !== undefined,
 						)
 				: [],
-			unreadChangeIds: stringArray(raw.unreadChangeIds),
+			unreadChangeIds: stringArray(raw.unreadChangeIds).filter((id) =>
+				changeIds.has(id),
+			),
 			unreadNewsIds: stringArray(raw.unreadNewsIds),
 			newsBaselineEstablished: raw.newsBaselineEstablished === true,
 			newsEtag: stringValue(raw.newsEtag),
 			newsLastModified: stringValue(raw.newsLastModified),
 			selectedPlan: planValue(raw.selectedPlan),
-			lastModelFetchAt: numeric(raw.lastModelFetchAt),
+			lastModelFetchAt,
 			lastNewsFetchAt: numeric(raw.lastNewsFetchAt),
 			lastAutoSyncAt: numeric(raw.lastAutoSyncAt),
 			lastAutoSync: parseAutoSync(raw.lastAutoSync),
@@ -558,6 +581,7 @@ export class ModelCenterService implements vscode.Disposable {
 function emptyState(): PersistedModelCenterState {
 	return {
 		schemaVersion: 1,
+		snapshotRevision: SNAPSHOT_REVISION,
 		changes: [],
 		news: [],
 		unreadChangeIds: [],

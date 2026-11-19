@@ -80,9 +80,11 @@ p {
 }
 
 h1 {
+	overflow: hidden;
 	font-size: 17px;
 	font-weight: 600;
 	letter-spacing: 0;
+	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
@@ -126,22 +128,34 @@ h3 {
 	gap: 2px;
 }
 
-.text-button {
+.model-center-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 	height: 30px;
 	padding: 0 8px;
-	border: 1px solid transparent;
+	border: 1px solid var(--vscode-button-border, var(--vscode-panel-border));
 	border-radius: 4px;
-	background: transparent;
-	color: var(--vscode-textLink-foreground);
+	background: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+	gap: 5px;
 	white-space: nowrap;
 	font-size: 11px;
 }
 
-.text-button:hover,
-.text-button:focus-visible {
-	background: var(--vscode-toolbar-hoverBackground);
+.model-center-button:hover,
+.model-center-button:focus-visible {
+	background: var(
+		--vscode-button-secondaryHoverBackground,
+		var(--vscode-toolbar-hoverBackground)
+	);
 	border-color: var(--vscode-focusBorder);
 	outline: none;
+}
+
+.model-center-button .button-icon {
+	font-size: 14px;
+	line-height: 1;
 }
 
 .icon-button.refreshing span {
@@ -717,8 +731,12 @@ tbody tr:nth-child(even):hover {
 		padding-inline: 12px;
 	}
 
-	.text-button {
+	.model-center-button {
 		max-width: 96px;
+		overflow: hidden;
+	}
+
+	#model-center-label {
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}

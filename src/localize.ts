@@ -82,6 +82,7 @@ const zhCN: Record<string, string> = {
 
 	// ── 额度 ──
 	"OpenCode Go usage": "OpenCode Go 额度",
+	"OpenCode Go usage statistics": "OpenCode Go 使用统计",
 	"OpenCode Go status": "OpenCode Go 状态",
 	"Open usage dashboard": "打开使用统计",
 	"Usage dashboard": "使用统计",
@@ -94,8 +95,7 @@ const zhCN: Record<string, string> = {
 	"Models and pricing": "模型与价格",
 	"Updates": "动态",
 	"Search models": "搜索模型",
-	"Official limits": "官方额度",
-	"Official pricing": "官方定价",
+	"Official page": "官方页面",
 	"Refresh model data": "刷新模型数据",
 	"Refreshing...": "正在刷新…",
 	"Plan": "套餐",
@@ -158,7 +158,7 @@ const zhCN: Record<string, string> = {
 	"Model data is temporarily unavailable: {0}": "模型数据暂时不可用：{0}",
 	"Official news is temporarily unavailable: {0}": "官方消息暂时不可用：{0}",
 	"Sync models now": "立即同步模型",
-	"Columns": "列",
+	"Columns": "列筛选",
 	"Show columns": "显示列",
 	"Current": "当前",
 	"Sort ascending": "升序排列",

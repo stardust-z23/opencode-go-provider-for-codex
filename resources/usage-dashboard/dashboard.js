@@ -137,6 +137,7 @@
 	}
 
 	function renderLabels() {
+		document.title = labels.title;
 		byId("page-title").textContent = labels.title;
 		byId("quota-title").textContent = labels.quotaSection;
 		byId("requests-title").textContent = labels.requestsSection;
@@ -148,7 +149,9 @@
 		menuButton.setAttribute("aria-label", labels.moreActions);
 		refreshButton.title = labels.refreshNow;
 		refreshButton.setAttribute("aria-label", labels.refreshNow);
-		modelCenterButton.textContent = labels.modelCenter;
+		byId("model-center-label").textContent = labels.modelCenter;
+		modelCenterButton.title = labels.modelCenter;
+		modelCenterButton.setAttribute("aria-label", labels.modelCenter);
 		const actionLabels = {
 			refreshQuota: labels.refreshQuota,
 			setApiKey: labels.setApiKey,

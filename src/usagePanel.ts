@@ -55,7 +55,7 @@ async function openUsageDashboard(
 
 	const panel = vscode.window.createWebviewPanel(
 		"codexgo.usageDashboard",
-		l10n("OpenCode Go usage"),
+		l10n("OpenCode Go usage statistics"),
 		vscode.ViewColumn.Active,
 		{
 			enableScripts: true,
@@ -276,7 +276,7 @@ async function dashboardHtml(
 
 function usageLabels(): Record<string, string> {
 	return {
-		title: l10n("OpenCode Go usage"),
+		title: l10n("OpenCode Go usage statistics"),
 		moreActions: l10n("More actions"),
 		quotaSection: l10n("Go plan quota"),
 		requestsSection: l10n("Requests through this extension"),
