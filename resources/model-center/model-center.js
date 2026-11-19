@@ -3,15 +3,54 @@
 
 	const vscode = acquireVsCodeApi();
 	const restored = vscode.getState() || {};
+	const columnKeys = new Set([
+		"monthly",
+		"input",
+		"cacheRead",
+		"cacheWrite",
+		"output",
+		"rules",
+		"availability",
+	]);
+	const sortKeys = new Set([
+		"name",
+		"monthly",
+		"input",
+		"cacheRead",
+		"cacheWrite",
+		"output",
+	]);
 	const state = {
 		tab: restored.tab === "updates" ? "updates" : "models",
 		search: typeof restored.search === "string" ? restored.search : "",
+		hiddenColumns: Array.isArray(restored.hiddenColumns)
+			? restored.hiddenColumns.filter((key) => columnKeys.has(key))
+			: [],
+		sortKey: sortKeys.has(restored.sortKey) ? restored.sortKey : "name",
+		sortDirection: restored.sortDirection === "desc" ? "desc" : "asc",
 	};
 	let data;
 	let labels = {};
 	let locale = document.documentElement.lang || "en";
 	let generatedAt = Date.now();
 	const byId = (id) => document.getElementById(id);
+	const columnDefinitions = [
+		{ key: "model", labelKey: "model", sortKey: "name", required: true },
+		{ key: "monthly", labelKey: "monthlyAllowance", sortKey: "monthly" },
+		{ key: "input", labelKey: "input", sortKey: "input" },
+		{ key: "cacheRead", labelKey: "cacheRead", sortKey: "cacheRead" },
+		{ key: "cacheWrite", labelKey: "cacheWrite", sortKey: "cacheWrite" },
+		{ key: "output", labelKey: "output", sortKey: "output" },
+		{ key: "rules", labelKey: "rules" },
+		{ key: "availability", labelKey: "availability" },
+	];
+	if (
+		state.sortKey !== "name" &&
+		state.hiddenColumns.includes(state.sortKey)
+	) {
+		state.sortKey = "name";
+		state.sortDirection = "asc";
+	}
 	const number = new Intl.NumberFormat(locale);
 	const priceNumber = new Intl.NumberFormat(locale, {
 		minimumFractionDigits: 0,
@@ -75,6 +114,22 @@
 	});
 	byId("models-tab").addEventListener("click", () => setTab("models"));
 	byId("updates-tab").addEventListener("click", () => setTab("updates"));
+	byId("columns-button").addEventListener("click", () => {
+		setColumnsMenuOpen(byId("columns-menu").hidden);
+	});
+	document.addEventListener("click", (event) => {
+		if (
+			!byId("columns-menu").hidden &&
+			!event.target.closest(".models-toolbar-actions")
+		) {
+			setColumnsMenuOpen(false);
+		}
+	});
+	document.addEventListener("keydown", (event) => {
+		if (event.key === "Escape") {
+			setColumnsMenuOpen(false);
+		}
+	});
 
 	vscode.postMessage({ type: "ready" });
 
@@ -83,6 +138,7 @@
 		renderLabels();
 		renderTabs();
 		renderPlan();
+		renderColumnsMenu();
 		renderMessages();
 		renderModels();
 		renderUpdates();
@@ -108,6 +164,9 @@
 		byId("usage-button").title = labels.openUsage;
 		byId("usage-button").setAttribute("aria-label", labels.openUsage);
 		byId("model-search").placeholder = labels.search;
+		byId("columns-button").textContent = labels.columns;
+		byId("columns-button").title = labels.showColumns;
+		byId("columns-button").setAttribute("aria-label", labels.showColumns);
 		byId("changes-title").textContent = labels.changes;
 		byId("news-title").textContent = labels.officialNews;
 		byId("history-window").textContent = labels.historyWindow;
@@ -166,6 +225,45 @@
 				: "";
 	}
 
+	function renderColumnsMenu() {
+		const menu = byId("columns-menu");
+		menu.replaceChildren(
+			...columnDefinitions
+				.filter((column) => !column.required)
+				.map((column) => {
+					const label = element("label", "columns-menu-item");
+					const checkbox = document.createElement("input");
+					checkbox.type = "checkbox";
+					checkbox.checked = !state.hiddenColumns.includes(column.key);
+					checkbox.addEventListener("change", () => {
+						const hidden = new Set(state.hiddenColumns);
+						if (checkbox.checked) {
+							hidden.delete(column.key);
+						} else {
+							hidden.add(column.key);
+							if (state.sortKey === column.sortKey) {
+								state.sortKey = "name";
+								state.sortDirection = "asc";
+							}
+						}
+						state.hiddenColumns = [...hidden];
+						saveState();
+						renderModels();
+					});
+					label.append(
+						checkbox,
+						element("span", "", labels[column.labelKey]),
+					);
+					return label;
+				}),
+		);
+	}
+
+	function setColumnsMenuOpen(open) {
+		byId("columns-menu").hidden = !open;
+		byId("columns-button").setAttribute("aria-expanded", String(open));
+	}
+
 	function renderMessages() {
 		const modelError = byId("model-error");
 		modelError.hidden = !data.modelError;
@@ -205,20 +303,52 @@
 	}
 
 	function renderModels() {
-		const headers = [
-			labels.model,
-			labels.monthlyAllowance,
-			labels.input,
-			labels.cacheRead,
-			labels.cacheWrite,
-			labels.output,
-			labels.rules,
-			labels.availability,
-		];
+		const columns = columnDefinitions.filter(
+			(column) => !state.hiddenColumns.includes(column.key),
+		);
 		byId("models-head").replaceChildren(
-			...headers.map((label) => {
+			...columns.map((column) => {
 				const th = document.createElement("th");
-				th.textContent = label;
+				th.className = `col-${column.key}`;
+				if (!column.sortKey) {
+					th.textContent = labels[column.labelKey];
+					return th;
+				}
+				const active = state.sortKey === column.sortKey;
+				th.setAttribute(
+					"aria-sort",
+					active
+						? state.sortDirection === "asc"
+							? "ascending"
+							: "descending"
+						: "none",
+				);
+				const button = element(
+					"button",
+					"sort-button",
+					labels[column.labelKey],
+				);
+				button.type = "button";
+				const indicator = element(
+					"span",
+					"sort-indicator",
+					active
+						? state.sortDirection === "asc"
+							? "▲"
+							: "▼"
+						: "↕",
+				);
+				indicator.setAttribute("aria-hidden", "true");
+				button.append(indicator);
+				button.title = active
+					? state.sortDirection === "asc"
+						? labels.sortDescending
+						: labels.sortAscending
+					: labels.sortAscending;
+				button.addEventListener("click", () =>
+					setSort(column.sortKey),
+				);
+				th.append(button);
 				return th;
 			}),
 		);
@@ -229,9 +359,15 @@
 				.filter(Boolean)
 				.some((value) => String(value).toLowerCase().includes(query));
 		});
+		models.sort(compareModels);
 		byId("models-body").replaceChildren(
-			...models.map((model) => modelRow(model)),
+			...models.map((model) => modelRow(model, columns)),
 		);
+		const table = byId("models-body").closest("table");
+		table.style.minWidth = `${Math.max(
+			620,
+			220 + (columns.length - 1) * 105,
+		)}px`;
 		const empty = byId("models-empty");
 		empty.hidden = models.length > 0;
 		empty.textContent = labels.noModels;
@@ -245,11 +381,67 @@
 		byId("refresh-button").disabled = data.refreshing === true;
 	}
 
-	function modelRow(model) {
+	function setSort(key) {
+		if (state.sortKey === key) {
+			state.sortDirection =
+				state.sortDirection === "asc" ? "desc" : "asc";
+		} else {
+			state.sortKey = key;
+			state.sortDirection = "asc";
+		}
+		saveState();
+		renderModels();
+	}
+
+	function compareModels(left, right) {
+		if (state.sortKey === "name") {
+			const result = left.name.localeCompare(right.name, locale, {
+				numeric: true,
+			});
+			return state.sortDirection === "asc" ? result : -result;
+		}
+		const leftValue = sortValue(left, state.sortKey);
+		const rightValue = sortValue(right, state.sortKey);
+		if (leftValue === null && rightValue === null) {
+			return left.name.localeCompare(right.name, locale, {
+				numeric: true,
+			});
+		}
+		if (leftValue === null) return 1;
+		if (rightValue === null) return -1;
+		const result = leftValue - rightValue;
+		return state.sortDirection === "asc" ? result : -result;
+	}
+
+	function sortValue(model, key) {
+		if (key === "monthly") {
+			const value = model.monthlyUsage[data.plan.effective];
+			return typeof value === "number" ? value : null;
+		}
+		if (key === "input") return numericPrice(model.price.input);
+		if (key === "cacheRead") return numericPrice(model.price.cacheRead);
+		if (key === "cacheWrite") return numericPrice(model.price.cacheWrite);
+		if (key === "output") return numericPrice(model.price.output);
+		return null;
+	}
+
+	function numericPrice(value) {
+		if (typeof value === "number") return value;
+		if (value && typeof value === "object") {
+			const numbers = Object.values(value).filter(
+				(amount) => typeof amount === "number",
+			);
+			return numbers.length > 0 ? Math.min(...numbers) : null;
+		}
+		return null;
+	}
+
+	function modelRow(model, columns) {
 		const row = document.createElement("tr");
 		if (model.description) row.title = model.description;
 
 		const nameCell = document.createElement("td");
+		nameCell.className = "col-model";
 		const name = element("div", "model-name");
 		name.append(element("strong", "", model.name));
 		const id = element("span", "model-id", model.id);
@@ -300,6 +492,7 @@
 		nameCell.append(name);
 
 		const allowanceCell = document.createElement("td");
+		allowanceCell.className = "col-monthly";
 		const planRows = [
 			["go", labels.go],
 			["go-plus", labels.goPlus],
@@ -334,6 +527,11 @@
 							: formatPrice(model.monthlyUsage[plan]),
 					),
 				);
+				if (plan === data.plan.effective) {
+					line.append(
+						element("span", "plan-current", labels.current),
+					);
+				}
 				const requests = model.requestsPerFiveHours[plan];
 				if (requests !== null) {
 					line.append(
@@ -351,10 +549,14 @@
 			allowanceCell.append(planLimits);
 		}
 
-		const inputCell = priceCell(model.price.input);
-		const cacheCell = priceCell(model.price.cacheRead);
-		const cacheWriteCell = priceCell(model.price.cacheWrite);
+		const inputCell = priceCell(model.price.input, "input");
+		const cacheCell = priceCell(model.price.cacheRead, "cacheRead");
+		const cacheWriteCell = priceCell(
+			model.price.cacheWrite,
+			"cacheWrite",
+		);
 		const outputCell = document.createElement("td");
+		outputCell.className = "col-output";
 		outputCell.append(
 			element("div", "price-block", formatPrice(model.price.output)),
 		);
@@ -371,6 +573,7 @@
 		}
 
 		const rulesCell = document.createElement("td");
+		rulesCell.className = "col-rules";
 		const rules = element("div", "tier-list");
 		if (model.timeRules.length === 0 && model.contextTiers.length === 0) {
 			rules.append(element("span", "rule-list", labels.noRules));
@@ -422,6 +625,7 @@
 		rulesCell.append(rules);
 
 		const availabilityCell = document.createElement("td");
+		availabilityCell.className = "col-availability";
 		const availability = element("div", "availability-list");
 		availability.append(
 			element(
@@ -439,21 +643,23 @@
 		if (model.openWeights) availability.append(element("span", "", labels.openWeights));
 		availabilityCell.append(availability);
 
-		row.append(
-			nameCell,
-			allowanceCell,
-			inputCell,
-			cacheCell,
-			cacheWriteCell,
-			outputCell,
-			rulesCell,
-			availabilityCell,
-		);
+		const cells = {
+			model: nameCell,
+			monthly: allowanceCell,
+			input: inputCell,
+			cacheRead: cacheCell,
+			cacheWrite: cacheWriteCell,
+			output: outputCell,
+			rules: rulesCell,
+			availability: availabilityCell,
+		};
+		row.append(...columns.map((column) => cells[column.key]));
 		return row;
 	}
 
-	function priceCell(value) {
+	function priceCell(value, key) {
 		const td = document.createElement("td");
+		td.className = `col-${key}`;
 		td.append(element("div", "price-block", formatPrice(value)));
 		return td;
 	}

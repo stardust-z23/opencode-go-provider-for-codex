@@ -352,12 +352,12 @@ function modelCenterLabels(): Record<string, string> {
 		manualPlan: l10n("Manual plan override: {0}"),
 		models: l10n("Models"),
 		featured: l10n("Featured"),
-		limitedTime: l10n("Limited time"),
+		limitedTime: l10n("Free for a limited time"),
 		deprecated: l10n("Deprecated"),
 		notIncluded: l10n("Not included"),
 		unread: l10n("{0} unread updates"),
 		model: l10n("Model"),
-		monthlyAllowance: l10n("Monthly"),
+		monthlyAllowance: l10n("Monthly allowance"),
 		input: l10n("Input"),
 		cacheRead: l10n("Cache read"),
 		cacheWrite: l10n("Cache write"),
@@ -410,6 +410,11 @@ function modelCenterLabels(): Record<string, string> {
 		copyModelId: l10n("Copy Model ID"),
 		setApiKey: l10n("Set API key"),
 		syncModels: l10n("Sync models now"),
+		columns: l10n("Columns"),
+		showColumns: l10n("Show columns"),
+		current: l10n("Current"),
+		sortAscending: l10n("Sort ascending"),
+		sortDescending: l10n("Sort descending"),
 	};
 }
 

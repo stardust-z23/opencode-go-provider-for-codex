@@ -321,16 +321,67 @@ main {
 	font-size: 11px;
 }
 
+.models-toolbar-actions {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 8px;
+	min-width: 0;
+}
+
+.columns-button {
+	flex-shrink: 0;
+	border-color: var(--vscode-panel-border);
+	color: var(--vscode-foreground);
+}
+
+.columns-menu {
+	position: absolute;
+	top: 34px;
+	right: 0;
+	z-index: 20;
+	display: grid;
+	min-width: 170px;
+	padding: 5px;
+	border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border));
+	border-radius: 5px;
+	background: var(--vscode-menu-background, var(--vscode-editorWidget-background));
+	box-shadow: 0 4px 16px var(--vscode-widget-shadow);
+}
+
+.columns-menu-item {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	padding: 5px 8px;
+	border-radius: 3px;
+	cursor: pointer;
+	white-space: nowrap;
+	font-size: 11px;
+}
+
+.columns-menu-item:hover {
+	background: var(--vscode-menu-selectionBackground);
+	color: var(--vscode-menu-selectionForeground);
+}
+
+.columns-menu-item input {
+	margin: 0;
+}
+
 .table-frame {
 	position: relative;
-	overflow-x: auto;
+	height: clamp(280px, calc(100vh - 290px), 720px);
+	overflow: auto;
 	border-top: 1px solid var(--grid-divider);
 }
 
 table {
 	width: 100%;
 	min-width: 900px;
-	border-collapse: collapse;
+	border-collapse: separate;
+	border-spacing: 0;
 	font-variant-numeric: tabular-nums;
 }
 
@@ -343,10 +394,20 @@ td {
 	white-space: nowrap;
 }
 
-th {
+thead {
 	position: sticky;
 	top: 0;
-	z-index: 1;
+	z-index: 5;
+	background: color-mix(
+		in srgb,
+		var(--vscode-foreground) 5%,
+		var(--vscode-editor-background)
+	);
+}
+
+th {
+	position: relative;
+	z-index: 5;
 	background: color-mix(
 		in srgb,
 		var(--vscode-foreground) 5%,
@@ -358,15 +419,52 @@ th {
 	border-bottom-color: var(--grid-divider);
 }
 
-th:first-child,
-td:first-child,
-th:nth-child(2),
-td:nth-child(2),
-th:nth-child(7),
-td:nth-child(7),
-th:last-child,
-td:last-child {
+th.col-model,
+td.col-model,
+th.col-monthly,
+td.col-monthly,
+th.col-rules,
+td.col-rules,
+th.col-availability,
+td.col-availability {
 	text-align: left;
+}
+
+.sort-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 4px;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	font-weight: inherit;
+	white-space: nowrap;
+}
+
+th.col-model .sort-button,
+th.col-monthly .sort-button {
+	justify-content: flex-start;
+}
+
+.sort-button:hover,
+.sort-button:focus-visible {
+	color: var(--vscode-foreground);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	outline: none;
+}
+
+.sort-indicator {
+	min-width: 8px;
+	color: var(--vscode-descriptionForeground);
+	font-size: 8px;
+}
+
+th[aria-sort="ascending"] .sort-indicator,
+th[aria-sort="descending"] .sort-indicator {
+	color: var(--vscode-focusBorder);
 }
 
 td {
@@ -484,7 +582,49 @@ tbody tr:nth-child(even):hover {
 }
 
 .plan-limit.current {
+	position: relative;
 	color: var(--vscode-foreground);
+	margin-left: -5px;
+	padding: 2px 5px;
+	border-radius: 3px;
+	background: color-mix(
+		in srgb,
+		var(--vscode-focusBorder) 16%,
+		transparent
+	);
+	box-shadow: inset 2px 0 var(--vscode-focusBorder);
+}
+
+.plan-limit.plan-go.current {
+	background: color-mix(
+		in srgb,
+		var(--vscode-charts-blue) 18%,
+		transparent
+	);
+	box-shadow: inset 2px 0 var(--vscode-charts-blue);
+}
+
+.plan-limit.plan-go-plus.current {
+	background: color-mix(
+		in srgb,
+		var(--vscode-charts-yellow) 20%,
+		transparent
+	);
+	box-shadow: inset 2px 0 var(--vscode-charts-yellow);
+}
+
+.plan-limit.plan-go-teams.current {
+	background: color-mix(
+		in srgb,
+		var(--vscode-charts-green) 18%,
+		transparent
+	);
+	box-shadow: inset 2px 0 var(--vscode-charts-green);
+}
+
+.plan-limit.current .plan-name,
+.plan-limit.current .plan-value {
+	font-weight: 700;
 }
 
 .plan-name {
@@ -501,6 +641,16 @@ tbody tr:nth-child(even):hover {
 .plan-requests {
 	margin-left: 2px;
 	font-size: 9px;
+}
+
+.plan-current {
+	margin-left: auto;
+	padding: 1px 4px;
+	border-radius: 3px;
+	background: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+	font-size: 8px;
+	font-weight: 600;
 }
 
 .secondary-line {
@@ -740,8 +890,14 @@ tbody tr:nth-child(even):hover {
 		width: 100%;
 	}
 
-	.toolbar-meta {
+	.models-toolbar-actions {
 		width: 100%;
+		justify-content: space-between;
+	}
+
+	.toolbar-meta {
+		flex: 1;
+		width: auto;
 	}
 
 	.update-heading {
