@@ -4,7 +4,13 @@
 	const vscode = acquireVsCodeApi();
 	const restored = vscode.getState() || {};
 	const state = {
-		range: restored.range === "today" || restored.range === "7d" ? restored.range : "1h",
+		range:
+			restored.range === "4h" ||
+			restored.range === "today" ||
+			restored.range === "yesterday" ||
+			restored.range === "7d"
+				? restored.range
+				: "1h",
 		model: typeof restored.model === "string" ? restored.model : "",
 		status:
 			restored.status === "success" || restored.status === "error"
@@ -27,8 +33,9 @@
 	const byId = (id) => document.getElementById(id);
 	const refreshButton = byId("refresh-button");
 	const menuButton = byId("menu-button");
-	const previousPage = byId("previous-page");
-	const nextPage = byId("next-page");
+	const previousPageButtons = [...document.querySelectorAll("[data-page-prev]")];
+	const nextPageButtons = [...document.querySelectorAll("[data-page-next]")];
+	const pageLabels = [...document.querySelectorAll("[data-page-label]")];
 	const actionMenu = byId("action-menu");
 	const numberCompact = new Intl.NumberFormat(locale, {
 		notation: "compact",
@@ -80,8 +87,12 @@
 	menuButton.addEventListener("click", () => {
 		setMenuOpen(actionMenu.hidden);
 	});
-	previousPage.addEventListener("click", () => changePage(-1));
-	nextPage.addEventListener("click", () => changePage(1));
+	for (const button of previousPageButtons) {
+		button.addEventListener("click", () => changePage(-1));
+	}
+	for (const button of nextPageButtons) {
+		button.addEventListener("click", () => changePage(1));
+	}
 	actionMenu.addEventListener("click", (event) => {
 		const button = event.target.closest("button[data-action]");
 		if (!button) return;
@@ -217,7 +228,9 @@
 		rangeControl.replaceChildren(
 			...[
 				["1h", labels.last1h],
+				["4h", labels.last4h],
 				["today", labels.today],
+				["yesterday", labels.yesterday],
 				["7d", labels.last7d],
 			].map(([value, label]) => {
 				const button = element("button", "", label);
@@ -515,16 +528,23 @@
 						String(total),
 					])
 				: "";
-		byId("page-label").textContent = formatTemplate(labels.pageOf, [
+		const pageLabel = formatTemplate(labels.pageOf, [
 			String(currentPage),
 			String(totalPages),
 		]);
-		previousPage.disabled = currentPage <= 1;
-		nextPage.disabled = currentPage >= totalPages;
-		previousPage.title = labels.previousPage;
-		previousPage.setAttribute("aria-label", labels.previousPage);
-		nextPage.title = labels.nextPage;
-		nextPage.setAttribute("aria-label", labels.nextPage);
+		for (const label of pageLabels) {
+			label.textContent = pageLabel;
+		}
+		for (const button of previousPageButtons) {
+			button.disabled = currentPage <= 1;
+			button.title = labels.previousPage;
+			button.setAttribute("aria-label", labels.previousPage);
+		}
+		for (const button of nextPageButtons) {
+			button.disabled = currentPage >= totalPages;
+			button.title = labels.nextPage;
+			button.setAttribute("aria-label", labels.nextPage);
+		}
 	}
 
 	function cacheReadCell(record) {

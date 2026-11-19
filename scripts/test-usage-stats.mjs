@@ -71,6 +71,28 @@ test("cacheHitRate uses cacheable input as denominator", () => {
 	assert.equal(usage.cacheHitRate(0, 0, 0), null);
 });
 
+test("resolveUsageRangeBounds supports rolling and local calendar ranges", () => {
+	const now = new Date(2026, 10, 19, 15, 30, 0, 0).getTime();
+	const today = new Date(2026, 10, 19, 0, 0, 0, 0).getTime();
+	const yesterday = new Date(2026, 10, 18, 0, 0, 0, 0).getTime();
+	assert.deepEqual(usage.resolveUsageRangeBounds("1h", now), {
+		start: now - 60 * 60 * 1000,
+		end: now,
+	});
+	assert.deepEqual(usage.resolveUsageRangeBounds("4h", now), {
+		start: now - 4 * 60 * 60 * 1000,
+		end: now,
+	});
+	assert.deepEqual(usage.resolveUsageRangeBounds("today", now), {
+		start: today,
+		end: now,
+	});
+	assert.deepEqual(usage.resolveUsageRangeBounds("yesterday", now), {
+		start: yesterday,
+		end: today - 1,
+	});
+});
+
 test("createUsageRecord keeps fresh input when cache exceeds input", () => {
 	const created = usage.createUsageRecord(
 		"proxy.usage",

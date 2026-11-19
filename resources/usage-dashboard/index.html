@@ -99,7 +99,14 @@
 
 				<div class="table-heading">
 					<h3 id="recent-title"></h3>
-					<span id="table-meta" class="muted"></span>
+					<div class="table-heading-actions">
+						<span id="table-meta" class="muted"></span>
+						<div class="pagination compact" data-pagination="top">
+							<button type="button" data-page-prev>&#x2039;</button>
+							<span data-page-label></span>
+							<button type="button" data-page-next>&#x203A;</button>
+						</div>
+					</div>
 				</div>
 				<div class="table-frame">
 					<table>
@@ -110,10 +117,10 @@
 					</table>
 					<div id="empty-state" class="empty-state" hidden></div>
 				</div>
-				<div class="pagination">
-					<button id="previous-page" type="button">&#x2039;</button>
-					<span id="page-label"></span>
-					<button id="next-page" type="button">&#x203A;</button>
+				<div class="pagination" data-pagination="bottom">
+					<button type="button" data-page-prev>&#x2039;</button>
+					<span data-page-label></span>
+					<button type="button" data-page-next>&#x203A;</button>
 				</div>
 			</section>
 		</main>

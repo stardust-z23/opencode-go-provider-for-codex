@@ -484,7 +484,15 @@ main {
 	margin-bottom: 7px;
 }
 
-.table-heading .muted {
+.table-heading-actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 10px;
+	min-width: 0;
+}
+
+.table-heading-actions .muted {
 	font-size: 11px;
 	font-variant-numeric: tabular-nums;
 }
@@ -623,6 +631,23 @@ tbody tr:nth-child(even):hover {
 	font-variant-numeric: tabular-nums;
 }
 
+.pagination.compact {
+	min-height: 0;
+	padding-top: 0;
+	gap: 5px;
+}
+
+.pagination.compact button {
+	width: 24px;
+	height: 22px;
+	font-size: 16px;
+}
+
+.pagination.compact span {
+	min-width: 70px;
+	font-size: 10px;
+}
+
 @media (max-width: 900px) {
 	.quota-rows {
 		grid-template-columns: 1fr;
@@ -697,9 +722,19 @@ tbody tr:nth-child(even):hover {
 	}
 
 	#range-control {
+		display: grid;
+		grid-template-columns: repeat(5, minmax(0, 1fr));
 		grid-column: 1 / -1;
-		width: max-content;
+		width: 100%;
 		max-width: 100%;
+	}
+
+	#range-control button {
+		min-width: 0;
+		padding-inline: 4px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		font-size: 10px;
 	}
 
 	.select-control {
@@ -758,5 +793,14 @@ tbody tr:nth-child(even):hover {
 	.trend-panel,
 	.requests-section {
 		min-width: 0;
+	}
+
+	.table-heading {
+		flex-wrap: wrap;
+	}
+
+	.table-heading-actions {
+		width: 100%;
+		justify-content: space-between;
 	}
 }

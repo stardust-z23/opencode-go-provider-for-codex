@@ -8,6 +8,7 @@ import {
 	refreshGoUsageNow,
 } from "./statusBar";
 import {
+	resolveUsageRangeBounds,
 	type UsageRangePreset,
 	type UsageStatusFilter,
 } from "./usageStats";
@@ -222,18 +223,10 @@ function queryFor(filters: UsagePanelFilters): {
 	limit: number;
 	offset: number;
 } {
-	const end = Date.now();
-	const today = new Date(end);
-	today.setHours(0, 0, 0, 0);
-	const start =
-		filters.range === "1h"
-			? end - 60 * 60 * 1000
-			: filters.range === "7d"
-				? end - 7 * 24 * 60 * 60 * 1000
-				: today.getTime();
+	const range = resolveUsageRangeBounds(filters.range);
 	return {
-		start,
-		end,
+		start: range.start,
+		end: range.end,
 		model: filters.model,
 		status: filters.status,
 		limit: REQUESTS_PER_PAGE,
@@ -242,7 +235,13 @@ function queryFor(filters: UsagePanelFilters): {
 }
 
 function isRange(value: unknown): value is UsageRangePreset {
-	return value === "1h" || value === "today" || value === "7d";
+	return (
+		value === "1h" ||
+		value === "4h" ||
+		value === "today" ||
+		value === "yesterday" ||
+		value === "7d"
+	);
 }
 
 function isStatus(value: unknown): value is UsageStatusFilter {
@@ -279,7 +278,9 @@ function usageLabels(): Record<string, string> {
 		quotaSection: l10n("Go plan quota"),
 		requestsSection: l10n("Requests through this extension"),
 		last1h: l10n("Last 1 hour"),
+		last4h: l10n("Last 4 hours"),
 		today: l10n("Today"),
+		yesterday: l10n("Yesterday"),
 		last7d: l10n("Last 7 days"),
 		model: l10n("Model"),
 		allModels: l10n("All models"),

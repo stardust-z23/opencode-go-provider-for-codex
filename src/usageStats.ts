@@ -1,4 +1,4 @@
-export type UsageRangePreset = "1h" | "today" | "7d";
+export type UsageRangePreset = "1h" | "4h" | "today" | "yesterday" | "7d";
 export type UsageStatusFilter = "all" | "success" | "error";
 
 export interface UsageRecord {
@@ -80,11 +80,39 @@ export interface CacheStatusSummary {
 	cacheHitRate: number | null;
 }
 
+export interface UsageTimeBounds {
+	start: number;
+	end: number;
+}
+
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 const CACHE_DROP_MIN_PREVIOUS = 50_000;
 const CACHE_DROP_MIN_TOKENS = 32_000;
+
+export function resolveUsageRangeBounds(
+	range: UsageRangePreset,
+	now = Date.now(),
+): UsageTimeBounds {
+	const today = new Date(now);
+	today.setHours(0, 0, 0, 0);
+	if (range === "1h") {
+		return { start: now - HOUR_MS, end: now };
+	}
+	if (range === "4h") {
+		return { start: now - 4 * HOUR_MS, end: now };
+	}
+	if (range === "7d") {
+		return { start: now - 7 * 24 * HOUR_MS, end: now };
+	}
+	if (range === "yesterday") {
+		const yesterday = new Date(today);
+		yesterday.setDate(yesterday.getDate() - 1);
+		return { start: yesterday.getTime(), end: today.getTime() - 1 };
+	}
+	return { start: today.getTime(), end: now };
+}
 
 function finiteNumber(value: unknown): number {
 	return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
