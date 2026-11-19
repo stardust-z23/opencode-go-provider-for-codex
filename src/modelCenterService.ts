@@ -14,8 +14,12 @@ import {
 	type OfficialNewsItem,
 	parseOfficialNewsFeed,
 } from "./modelCenterData";
+import {
+	ensureOfficialCatalogLoaded,
+	getOfficialCatalogSnapshot,
+	publishOfficialCatalogSnapshot,
+} from "./officialCatalog";
 
-const MODEL_CATALOG_URL = "https://opencode.ai/inference/go/v1/models";
 const NEWS_FEED_URL = "https://opencode.ai/console/changelog/rss.xml";
 const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 const STARTUP_DELAY_MS = 5_000;
@@ -126,6 +130,7 @@ export class ModelCenterService implements vscode.Disposable {
 	async initialize(): Promise<void> {
 		await fs.mkdir(this.storageDir, { recursive: true });
 		this.state = await this.loadState();
+		publishOfficialCatalogSnapshot(this.state.snapshot);
 		this.pruneState();
 	}
 
@@ -384,16 +389,10 @@ export class ModelCenterService implements vscode.Disposable {
 	}
 
 	private async fetchModels(): Promise<ModelFetchResult> {
-		const response = await this.fetchWithTimeout(MODEL_CATALOG_URL, {
-			Accept: "application/json",
-		});
-		if (!response.ok) {
-			throw new Error(`HTTP [${response.status}] ${response.statusText}`);
-		}
-		const payload = (await response.json()) as unknown;
-		const snapshot = normalizeModelCatalog(payload);
-		if (snapshot.models.length === 0) {
-			throw new Error("The public model catalog returned no models.");
+		await ensureOfficialCatalogLoaded(true);
+		const snapshot = getOfficialCatalogSnapshot();
+		if (!snapshot) {
+			throw new Error("The public model catalog is unavailable.");
 		}
 		return { snapshot };
 	}

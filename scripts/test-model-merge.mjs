@@ -10,6 +10,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { buildModelList, extractModelIds, formatTokenCount, formatPrice } = require("../out/modelInfo.js");
 const { HARDCODED_GO_MODELS } = require("../out/hardcodedModels.js");
+const officialCatalog = require("../out/officialCatalog.js");
 
 const tests = [];
 function test(name, fn) {
@@ -156,6 +157,67 @@ test("模型 ID 会去掉首尾空白并去重", () => {
 	const list = buildModelList(["  kimi-k3  ", "kimi-k3", ""], () => undefined, []);
 	assert.equal(list.length, 1);
 	assert.equal(list[0].id, "kimi-k3");
+});
+
+test("官方公开目录提供上下文、推理、多模态和协议元数据", () => {
+	officialCatalog.publishOfficialCatalog({
+		object: "list",
+		data: [
+			{
+				id: "official-model",
+				name: "Official Model",
+				recommended_api: "messages",
+				modalities: { input: ["text", "image/png"], output: ["text"] },
+				capabilities: {
+					reasoning: { supported: true, effort: ["low", "high"] },
+				},
+				limit: { context: 512000, output: 128000 },
+				cost: {
+					text: {
+						input: { price: 1.5, cache: { read: 0.15 } },
+						output: { price: 6 },
+					},
+				},
+				api: {
+					messages: { base_url: "https://opencode.ai/inference/go/v1" },
+				},
+			},
+		],
+	});
+	assert.deepEqual(officialCatalog.getOfficialCatalogModelIds(), ["official-model"]);
+	assert.deepEqual(officialCatalog.getOfficialCatalogFacts("official-model"), {
+		name: "Official Model",
+		wireApi: "anthropic",
+		protocolKnown: true,
+		vision: true,
+		contextLength: 512000,
+		reasoning: true,
+		efforts: ["low", "high"],
+		cost: { input: 1.5, output: 6, cacheRead: 0.15 },
+		deprecated: false,
+	});
+	const list = buildModelList(
+		["official-model"],
+		officialCatalog.getOfficialCatalogFacts,
+		officialCatalog.getOfficialCatalogModelIds(),
+	);
+	assert.equal(list[0].wireApi, "anthropic");
+	assert.equal(list[0].contextLength, 512000);
+	assert.deepEqual(list[0].efforts, ["low", "high"]);
+	assert.equal(list[0].vision, true);
+});
+
+test("空官方目录不会清掉上一份可用快照", () => {
+	const before = officialCatalog.getOfficialCatalogModelIds();
+	assert.throws(
+		() => officialCatalog.publishOfficialCatalog({ data: [] }),
+		/returned no models/,
+	);
+	assert.deepEqual(officialCatalog.getOfficialCatalogModelIds(), before);
+	assert.equal(
+		officialCatalog.getOfficialCatalogFacts("official-model").contextLength,
+		512000,
+	);
 });
 
 test("格式化辅助函数", () => {

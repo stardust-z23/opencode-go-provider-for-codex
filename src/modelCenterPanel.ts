@@ -33,8 +33,8 @@ interface ModelRow {
 	availableApis: string[];
 	contextLimit?: number;
 	outputLimit?: number;
-	monthlyUsage: number | null;
-	requestsPerFiveHours: number | null;
+	monthlyUsage: Record<GoPlan, number | null>;
+	requestsPerFiveHours: Record<GoPlan, number | null>;
 	price: {
 		input: number | null;
 		cacheRead: number | null;
@@ -50,6 +50,7 @@ interface ModelRow {
 	limitedRegions: boolean;
 	limitedTime: boolean;
 	featured: boolean;
+	deprecated: boolean;
 	reasoningEfforts: string[];
 	vision: boolean;
 	openWeights?: boolean;
@@ -269,12 +270,12 @@ function viewData(snapshot: ModelCenterViewSnapshot): Record<string, unknown> {
 	return {
 		...snapshot,
 		models: snapshot.models.map((model) =>
-			modelRow(model, snapshot.plan.effective),
+			modelRow(model),
 		),
 	};
 }
 
-function modelRow(model: GoModelInfo, plan: GoPlan): ModelRow {
+function modelRow(model: GoModelInfo): ModelRow {
 	const price = effectiveModelPrice(model);
 	const reasoning = model.capabilities?.reasoning;
 	const reasoningEfforts =
@@ -299,8 +300,12 @@ function modelRow(model: GoModelInfo, plan: GoPlan): ModelRow {
 		availableApis: Object.keys(model.api ?? {}),
 		contextLimit: model.contextLimit,
 		outputLimit: model.outputLimit,
-		monthlyUsage: model.monthlyUsage[plan],
-		requestsPerFiveHours: model.requestsPerFiveHours?.[plan] ?? null,
+		monthlyUsage: model.monthlyUsage,
+		requestsPerFiveHours: model.requestsPerFiveHours ?? {
+			go: null,
+			"go-plus": null,
+			"go-teams": null,
+		},
 		price: {
 			input: price.input,
 			cacheRead: price.cacheRead,
@@ -316,6 +321,7 @@ function modelRow(model: GoModelInfo, plan: GoPlan): ModelRow {
 		limitedRegions: model.limitedRegions,
 		limitedTime: model.limitedTime,
 		featured: model.featured,
+		deprecated: model.deprecated,
 		reasoningEfforts,
 		vision: model.inputModalities.some(
 			(modality) => modality !== "text",
@@ -342,23 +348,26 @@ function modelCenterLabels(): Record<string, string> {
 		goPlus: l10n("Go Plus"),
 		goTeams: l10n("Go Teams"),
 		detectedPlan: l10n("Detected from the latest request: {0}"),
-		defaultPlan: l10n("No billing plan detected; showing Go by default."),
+		defaultPlan: l10n("No billing plan detected; highlighting Go by default."),
 		manualPlan: l10n("Manual plan override: {0}"),
 		models: l10n("Models"),
 		featured: l10n("Featured"),
 		limitedTime: l10n("Limited time"),
+		deprecated: l10n("Deprecated"),
 		notIncluded: l10n("Not included"),
 		unread: l10n("{0} unread updates"),
 		model: l10n("Model"),
-		monthlyAllowance: l10n("Monthly allowance"),
+		monthlyAllowance: l10n("Monthly"),
 		input: l10n("Input"),
 		cacheRead: l10n("Cache read"),
 		cacheWrite: l10n("Cache write"),
 		output: l10n("Output"),
 		context: l10n("Context"),
-		rules: l10n("Current price rules"),
+		contextLength: l10n("{0} context"),
+		outputLimit: l10n("{0} output"),
+		rules: l10n("Rules"),
 		availability: l10n("Availability"),
-		perMillion: l10n("USD / 1M tokens"),
+		priceUnit: l10n("$ / 1M tokens"),
 		priceAt: l10n("Current: {0}"),
 		peakMultiplier: l10n("{0}x multiplier"),
 		contextTier: l10n("Above {0} context"),

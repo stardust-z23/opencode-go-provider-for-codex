@@ -13,9 +13,7 @@
 	let generatedAt = Date.now();
 	const byId = (id) => document.getElementById(id);
 	const number = new Intl.NumberFormat(locale);
-	const currency = new Intl.NumberFormat(locale, {
-		style: "currency",
-		currency: "USD",
+	const priceNumber = new Intl.NumberFormat(locale, {
 		minimumFractionDigits: 0,
 		maximumFractionDigits: 4,
 	});
@@ -214,16 +212,13 @@
 			labels.cacheRead,
 			labels.cacheWrite,
 			labels.output,
-			labels.context,
 			labels.rules,
 			labels.availability,
 		];
 		byId("models-head").replaceChildren(
-			...headers.map((label, index) => {
+			...headers.map((label) => {
 				const th = document.createElement("th");
-				th.textContent = index >= 2 && index <= 5
-					? `${label} (${labels.perMillion})`
-					: label;
+				th.textContent = label;
 				return th;
 			}),
 		);
@@ -243,12 +238,10 @@
 		const refreshed = data.lastModelFetchAt
 			? dateTime.format(new Date(data.lastModelFetchAt))
 			: "—";
-		byId("models-meta").textContent = `${number.format(models.length)} ${
-			labels.models
-		} · ${planLabel(data.plan.effective)} · ${formatTemplate(
-			labels.lastModelFetch,
-			[refreshed],
-		)}`;
+		byId("models-meta").textContent =
+			`${number.format(models.length)} ${labels.models} · ` +
+			`${planLabel(data.plan.effective)} · ${labels.priceUnit} · ` +
+			formatTemplate(labels.lastModelFetch, [refreshed]);
 		byId("refresh-button").disabled = data.refreshing === true;
 	}
 
@@ -265,9 +258,34 @@
 			vscode.postMessage({ type: "copyModelId", modelId: model.id }),
 		);
 		name.append(id);
+		const facts = element("div", "model-facts");
+		if (model.contextLimit !== undefined) {
+			facts.append(
+				element(
+					"span",
+					"",
+					formatTemplate(labels.contextLength, [
+						compact.format(model.contextLimit),
+					]),
+				),
+			);
+		}
+		if (model.outputLimit !== undefined) {
+			facts.append(
+				element(
+					"span",
+					"",
+					formatTemplate(labels.outputLimit, [
+						compact.format(model.outputLimit),
+					]),
+				),
+			);
+		}
+		if (facts.childElementCount > 0) name.append(facts);
 		const badges = element("div", "badge-row");
 		if (model.featured) badges.append(element("span", "badge featured", labels.featured));
 		if (model.limitedTime) badges.append(element("span", "badge limited", labels.limitedTime));
+		if (model.deprecated) badges.append(element("span", "badge limited", labels.deprecated));
 		if (model.vision) badges.append(element("span", "badge", labels.vision));
 		if (model.reasoningEfforts.length > 0) {
 			badges.append(
@@ -282,27 +300,55 @@
 		nameCell.append(name);
 
 		const allowanceCell = document.createElement("td");
-		allowanceCell.append(
-			element(
-				"span",
-				"allowance",
-				model.monthlyUsage === null
-					? model.limitedTime
-						? labels.limitedTime
-						: labels.notIncluded
-					: currency.format(model.monthlyUsage),
-			),
+		const planRows = [
+			["go", labels.go],
+			["go-plus", labels.goPlus],
+		];
+		if (data.plan.effective === "go-teams") {
+			planRows.push(["go-teams", labels.goTeams]);
+		}
+		const hasPlanQuota = planRows.some(
+			([plan]) => model.monthlyUsage[plan] !== null,
 		);
-		if (model.requestsPerFiveHours !== null) {
+		if (!hasPlanQuota && model.limitedTime) {
 			allowanceCell.append(
-				element(
-					"span",
-					"secondary-line",
-					formatTemplate(labels.requestsFiveHours, [
-						number.format(model.requestsPerFiveHours),
-					]),
-				),
+				element("span", "allowance", labels.limitedTime),
 			);
+		} else {
+			const planLimits = element("div", "plan-limits");
+			for (const [plan, label] of planRows) {
+				const line = element(
+					"div",
+					`plan-limit plan-${plan}`,
+				);
+				if (plan === data.plan.effective) {
+					line.classList.add("current");
+				}
+				line.append(
+					element("span", "plan-name", label),
+					element(
+						"strong",
+						"plan-value",
+						model.monthlyUsage[plan] === null
+							? labels.notIncluded
+							: formatPrice(model.monthlyUsage[plan]),
+					),
+				);
+				const requests = model.requestsPerFiveHours[plan];
+				if (requests !== null) {
+					line.append(
+						element(
+							"span",
+							"plan-requests",
+							formatTemplate(labels.requestsFiveHours, [
+								number.format(requests),
+							]),
+						),
+					);
+				}
+				planLimits.append(line);
+			}
+			allowanceCell.append(planLimits);
 		}
 
 		const inputCell = priceCell(model.price.input);
@@ -320,26 +366,6 @@
 					formatTemplate(labels.peakMultiplier, [
 						String(model.price.multiplier),
 					]),
-				),
-			);
-		}
-
-		const contextCell = document.createElement("td");
-		contextCell.append(
-			element(
-				"div",
-				"",
-				model.contextLimit === undefined
-					? "—"
-					: compact.format(model.contextLimit),
-			),
-		);
-		if (model.outputLimit !== undefined) {
-			contextCell.append(
-				element(
-					"span",
-					"secondary-line",
-					`out ${compact.format(model.outputLimit)}`,
 				),
 			);
 		}
@@ -420,7 +446,6 @@
 			cacheCell,
 			cacheWriteCell,
 			outputCell,
-			contextCell,
 			rulesCell,
 			availabilityCell,
 		);
@@ -543,14 +568,14 @@
 
 	function formatPrice(value) {
 		if (value === null || value === undefined) return "—";
-		if (typeof value === "number") return currency.format(value);
+		if (typeof value === "number") return `$${priceNumber.format(value)}`;
 		if (typeof value === "object") {
 			const entries = Object.entries(value);
 			return entries.length
 				? entries
 						.map(([duration, amount]) =>
 							typeof amount === "number"
-								? `${duration} ${currency.format(amount)}`
+								? `${duration} $${priceNumber.format(amount)}`
 								: `${duration} —`,
 						)
 						.join(" · ")

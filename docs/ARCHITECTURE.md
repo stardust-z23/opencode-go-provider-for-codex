@@ -12,7 +12,7 @@
 | `src/tomlEdit.ts` | 纯函数式按行编辑，不依赖 `vscode` |
 | `src/modelList.ts` | 模型发现编排、实时请求、持久缓存、并发合并 |
 | `src/modelInfo.ts` | 模型 ID 提取、元数据合并、展示格式 |
-| `src/modelsDev.ts` | models.dev 拉取、镜像回退、provider/global 元数据索引 |
+| `src/officialCatalog.ts` | 官方公开模型目录拉取、缓存、ID 与协议/能力元数据索引 |
 | `src/hardcodedModels.ts` | 官方端点表的内置快照 |
 | `src/protocolVariants.ts` | 多协议模型的 Codex 别名与基础模型映射 |
 | `src/catalog.ts` | Codex 模型目录条目构建与无 BOM 原子写入 |
@@ -69,22 +69,23 @@
 模型 ID 和元数据来自不同来源：
 
 1. **模型 ID**
-   - 有密钥时请求 `/inference/go/v1/models`。
+   - 有密钥时请求账户可见的 `/inference/go/v1/models`。
    - 请求失败后使用本次进程内的上次成功结果，或 `globalState` 中 14 天内的持久化结果。
-   - 仍无 ID 时使用 models.dev 的 `opencode-go` provider 模型。
+   - 仍无 ID 时使用 OpenCode 官方公开模型目录。
    - 最后使用 `hardcodedModels.ts` 的内置快照。
 2. **元数据**
-   - 内置表优先决定已知协议和免费标记。
-   - models.dev 的 provider 条目优先于全局短 ID 条目，提供名称、上下文长度、价格、推理强度、视觉和弃用状态。
+   - 内置表优先决定已知协议别名和免费标记。
+   - 官方公开目录提供名称、上下文长度、价格、推理档位、多模态与 API 协议。
+   - 公开目录快照来自模型中心持久化状态或本次启动的刷新，模型同步与代理共享同一份内存索引。
    - 未知模型默认按 `chat` 处理。
 
 并发控制：
 
 - 完整 `prepareModelList()` 只由手动目录同步触发，同一时刻只运行一趟。
 - 目录同步使用 `force: true`，因此每次都会请求实时模型列表。
-- `codexgo.modelsDevUpdateInterval` 只控制 models.dev 元数据缓存，最低 30 秒。
-- 代理路由只调用 `ensureCatalogLoadedOnce()` 读取一次元数据，不触发实时模型列表或周期性刷新。
-- models.dev 加载失败后至少 60 秒才重试，且不会清掉已有良好缓存。
+- 官方公开目录缓存 1 小时；目录同步的 `force` 会强制刷新。
+- 代理路由只调用 `ensureOfficialCatalogLoadedOnce()` 读取共享快照，不触发账户模型列表。
+- 官方目录加载失败后至少 60 秒才重试，且不会清掉已有良好缓存。
 
 ## 模型选择与目录同步
 
@@ -194,12 +195,12 @@ Codex 的模型选择器会用内部可见档位列表过滤目录，默认不�
 
 ## 模型中心
 
-模型中心使用不需要 API 密钥的公开数据源：
+模型中心、模型同步和代理路由共用不需要 API 密钥的官方公开数据源：
 
 - 模型目录：`https://opencode.ai/inference/go/v1/models`
 - 官方动态：`https://opencode.ai/console/changelog/rss.xml`
 
-两者每小时刷新一次，RSS 使用 `ETag` / `Last-Modified` 条件请求。首次成功拉取只建立基线，不发通知；之后模型新增、下线、月额度、价格、上下文限制、可用性、元数据变化和官方新条目会聚合为一条通知，并累计未读徽标。
+两者每小时刷新一次，RSS 使用 `ETag` / `Last-Modified` 条件请求。公开模型目录同时提供给模型同步与代理路由；模型中心首次成功拉取只建立基线，不发通知；之后模型新增、下线、月额度、价格、上下文限制、可用性、元数据变化和官方新条目会聚合为一条通知，并累计未读徽标。
 
 - 状态保存在 `<globalStorage>/model-center/state.json`，变更与消息保留 90 天。
 - `usage.opencode.billing_source` 的 `go` / `go-plus` 会用于自动选择套餐；没有稳定标记时默认 `go`，用户可手动选择 `go-teams`。

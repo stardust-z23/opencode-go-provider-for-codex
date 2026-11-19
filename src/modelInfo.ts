@@ -8,9 +8,9 @@
  * 需要做了裁剪）：
  *
  *   1. 有实时 API 列表时以它为准（反映账号套餐实际提供的模型），否则用
- *      models.dev 目录，再否则用内置快照。
+ *      官方公开目录，再否则用内置快照。
  *   2. 每个模型的元数据（协议、上下文、价格、推理、视觉、弃用状态）按字段
- *      合并：内置表 → 目录。
+ *      合并：内置表 → 官方公开目录。
  */
 
 import { HARDCODED_GO_MODELS } from "./hardcodedModels";
@@ -53,7 +53,7 @@ export interface ModelInfo {
 	source: ModelListSource;
 }
 
-/** 从目录解析出的单模型元数据（已按 provider → 全局合并）。 */
+/** 从官方公开模型目录解析出的单模型元数据。 */
 export interface CatalogFacts {
 	name?: string;
 	contextLength?: number;
@@ -62,7 +62,7 @@ export interface CatalogFacts {
 	vision?: boolean;
 	deprecated?: boolean;
 	cost?: ModelCost;
-	/** 由目录的适配器包 / 家族启发式推导出的协议。 */
+	/** 由官方目录的 API 声明推导出的协议。 */
 	wireApi?: WireApi;
 	/** 目录明确识别出适配器包时为 true。 */
 	protocolKnown?: boolean;

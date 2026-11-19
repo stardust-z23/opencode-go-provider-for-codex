@@ -4,8 +4,7 @@
  * 沿用 OpenCode Go Provider for Copilot 的发现流程：
  *
  * - 同一时刻只跑一趟；并发调用方等待进行中的那一趟，而不是各拉各的。
- * - 只有超过 `codexgo.modelsDevUpdateInterval`（最小 30 秒）才刷新；`force`
- *   可绕过 TTL。
+ * - 模型列表在短时间内复用；`force` 可绕过 TTL。
  * - 实时 API 列表可用时是严格更优的来源（它反映套餐实际提供的模型）；失败时
  *   依次降级：持久化缓存 → 目录 ID → 内置表，绝不会变成空列表。
  * - 拉取成功的 API 列表会存进 `globalState`，让重启后离线也能用（14 天过期）。
@@ -17,10 +16,10 @@ import { l10n, l10nFormat } from "./localize";
 import { delay, extractHttpStatus, fetchJsonWithTimeout } from "./utils";
 import { buildModelList, extractModelIds, ModelInfo } from "./modelInfo";
 import {
-	ensureCatalogLoaded,
-	getGoCatalogFacts,
-	getGoCatalogModelIds,
-} from "./modelsDev";
+	ensureOfficialCatalogLoaded,
+	getOfficialCatalogFacts,
+	getOfficialCatalogModelIds,
+} from "./officialCatalog";
 import { OPENCODE_GO_BASE_URL } from "./tomlEdit";
 import { resolveApiKey } from "./apiKey";
 
@@ -28,6 +27,7 @@ const GO_MODELS_ENDPOINT = `${OPENCODE_GO_BASE_URL}/models`;
 const PERSIST_KEY = "codexgo.modelListCache.v1";
 const PERSIST_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 const API_MIN_INTERVAL_MS = 30_000;
+const MODEL_LIST_REFRESH_MS = 60_000;
 const FETCH_TIMEOUT_MS = 15_000;
 const MAX_ATTEMPTS = 2;
 
@@ -53,7 +53,11 @@ export async function prepareModelList(
 	const now = Date.now();
 	if (isUpdating) {
 		await waitForPendingUpdate(token);
-	} else if (options?.force || cachedModels === null || now - lastUpdateTime >= getUpdateIntervalMs()) {
+	} else if (
+		options?.force ||
+		cachedModels === null ||
+		now - lastUpdateTime >= MODEL_LIST_REFRESH_MS
+	) {
 		isUpdating = true;
 		try {
 			await runDiscoveryPass(options?.force === true, token, secrets, globalState);
@@ -88,11 +92,6 @@ export function describeModelFetchError(err: unknown): string {
 
 // ── 内部实现 ──
 
-function getUpdateIntervalMs(): number {
-	const raw = vscode.workspace.getConfiguration("codexgo").get<number>("modelsDevUpdateInterval", 60_000);
-	return Math.max(Number.isFinite(raw) ? raw : 60_000, 30_000);
-}
-
 async function waitForPendingUpdate(token: vscode.CancellationToken): Promise<void> {
 	while (isUpdating && !token.isCancellationRequested) {
 		await delay(200);
@@ -105,8 +104,14 @@ async function runDiscoveryPass(
 	secrets: vscode.SecretStorage,
 	globalState: vscode.Memento,
 ): Promise<void> {
-	// 目录决定模型元数据，必须最先尝试（它内部会自行降级，永不抛异常）。
-	await ensureCatalogLoaded();
+	// 官方公开目录提供名称、上下文、推理档位、多模态与协议元数据。
+	try {
+		await ensureOfficialCatalogLoaded(force);
+	} catch (error) {
+		logger.warn("models.officialCatalog.failed", {
+			error: error instanceof Error ? error.message : String(error),
+		});
+	}
 	if (token.isCancellationRequested) {
 		return;
 	}
@@ -135,7 +140,11 @@ async function runDiscoveryPass(
 		apiIds = lastApiIds ?? loadPersistedApiIds(globalState);
 	}
 
-	cachedModels = buildModelList(apiIds, getGoCatalogFacts, getGoCatalogModelIds());
+	cachedModels = buildModelList(
+		apiIds,
+		getOfficialCatalogFacts,
+		getOfficialCatalogModelIds(),
+	);
 	logger.info("models.discovery.done", {
 		source: cachedModels[0]?.source ?? "none",
 		count: cachedModels.length,

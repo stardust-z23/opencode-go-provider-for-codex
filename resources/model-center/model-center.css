@@ -329,7 +329,7 @@ main {
 
 table {
 	width: 100%;
-	min-width: 1100px;
+	min-width: 900px;
 	border-collapse: collapse;
 	font-variant-numeric: tabular-nums;
 }
@@ -362,8 +362,8 @@ th:first-child,
 td:first-child,
 th:nth-child(2),
 td:nth-child(2),
-th:nth-child(8),
-td:nth-child(8),
+th:nth-child(7),
+td:nth-child(7),
 th:last-child,
 td:last-child {
 	text-align: left;
@@ -386,7 +386,7 @@ tbody tr:nth-child(even):hover {
 }
 
 .model-name {
-	max-width: 230px;
+	max-width: 280px;
 }
 
 .model-name strong {
@@ -406,6 +406,15 @@ tbody tr:nth-child(even):hover {
 	font-family: var(--vscode-editor-font-family);
 	font-size: 10px;
 	cursor: copy;
+}
+
+.model-facts {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 3px 10px;
+	margin-top: 4px;
+	color: var(--vscode-descriptionForeground);
+	font-size: 10px;
 }
 
 .badge-row {
@@ -437,6 +446,61 @@ tbody tr:nth-child(even):hover {
 .allowance {
 	font-size: 13px;
 	font-weight: 600;
+}
+
+.plan-limits {
+	display: grid;
+	gap: 4px;
+	min-width: 130px;
+}
+
+.plan-limit {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	color: var(--vscode-descriptionForeground);
+	line-height: 1.25;
+}
+
+.plan-limit::before {
+	width: 7px;
+	height: 7px;
+	flex: 0 0 7px;
+	border-radius: 2px;
+	background: var(--vscode-descriptionForeground);
+	content: "";
+}
+
+.plan-limit.plan-go::before {
+	background: var(--vscode-charts-blue);
+}
+
+.plan-limit.plan-go-plus::before {
+	background: var(--vscode-charts-yellow);
+}
+
+.plan-limit.plan-go-teams::before {
+	background: var(--vscode-charts-green);
+}
+
+.plan-limit.current {
+	color: var(--vscode-foreground);
+}
+
+.plan-name {
+	min-width: 44px;
+	font-size: 10px;
+}
+
+.plan-value {
+	font-size: 12px;
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.plan-requests {
+	margin-left: 2px;
+	font-size: 9px;
 }
 
 .secondary-line {

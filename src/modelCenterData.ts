@@ -25,6 +25,7 @@ export interface GoModelInfo {
 	limitedRegions: boolean;
 	limitedTime: boolean;
 	featured: boolean;
+	deprecated: boolean;
 	cost?: Record<string, unknown>;
 	api?: Record<string, unknown>;
 	capabilities?: Record<string, unknown>;
@@ -187,6 +188,9 @@ export function normalizeModelInfo(value: unknown): GoModelInfo | undefined {
 			basePrice?.input === 0 &&
 			basePrice.output === 0,
 		featured: boolValue(goRaw.featured),
+		deprecated:
+			value.deprecated === true ||
+			String(value.status ?? "").toLowerCase() === "deprecated",
 		cost: isRecord(value.cost) ? value.cost : undefined,
 		api: isRecord(value.api) ? value.api : undefined,
 		capabilities: isRecord(value.capabilities) ? value.capabilities : undefined,
@@ -374,6 +378,7 @@ export function diffModelCatalogs(
 			"limitedRegions",
 			"limitedTime",
 			"featured",
+			"deprecated",
 		] as const) {
 			if (old[key] !== model[key]) {
 				availabilityDetails.push({

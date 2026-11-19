@@ -11,7 +11,10 @@ import { applyProviderEndpoint, readCurrent } from "./codexConfig";
 import { HARDCODED_GO_MODELS } from "./hardcodedModels";
 import { l10n, l10nFormat } from "./localize";
 import { logger } from "./logger";
-import { ensureCatalogLoadedOnce, getGoCatalogFacts } from "./modelsDev";
+import {
+	ensureOfficialCatalogLoadedOnce,
+	getOfficialCatalogFacts,
+} from "./officialCatalog";
 import { protocolAliasForId } from "./protocolVariants";
 import { OPENCODE_GO_BASE_URL, OPENCODE_GO_PROVIDER } from "./tomlEdit";
 import { getUsageStore } from "./usageService";
@@ -270,8 +273,8 @@ async function resolveModelRoute(modelId: string): Promise<ProxyModelRoute> {
 	const baseId = alias?.baseId ?? modelId;
 	let efforts: string[] | undefined;
 	try {
-		await ensureCatalogLoadedOnce();
-		efforts = getGoCatalogFacts(baseId)?.efforts;
+		await ensureOfficialCatalogLoadedOnce();
+		efforts = getOfficialCatalogFacts(baseId)?.efforts;
 	} catch (error) {
 		logger.warn("proxy.modelLookup.failed", {
 			modelId,
@@ -283,7 +286,7 @@ async function resolveModelRoute(modelId: string): Promise<ProxyModelRoute> {
 		wireApi:
 			alias?.wireApi ??
 			hardcoded?.wireApi ??
-			getGoCatalogFacts(baseId)?.wireApi ??
+			getOfficialCatalogFacts(baseId)?.wireApi ??
 			"chat",
 		upstreamModelId: alias?.baseId,
 		efforts,

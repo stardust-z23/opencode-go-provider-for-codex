@@ -17,7 +17,7 @@
 		"type": "git",
 		"url": "https://github.com/stardust-z23/opencode-go-provider-for-codex"
 	},
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"engines": {
 		"vscode": "^1.116.0"
 	},
@@ -139,22 +139,6 @@
 					"minimum": 1,
 					"maximum": 50,
 					"markdownDescription": "%config.maxBackups.desc%"
-				},
-				"codexgo.modelsDevMirrorUrl": {
-					"type": "string",
-					"default": "https://modelsdev-mirror.onesoft.top/catalog.json",
-					"markdownDescription": "%config.modelsDevMirrorUrl.desc%"
-				},
-				"codexgo.modelsDevMirrorToken": {
-					"type": "string",
-					"default": "",
-					"markdownDescription": "%config.modelsDevMirrorToken.desc%"
-				},
-				"codexgo.modelsDevUpdateInterval": {
-					"type": "number",
-					"default": 60000,
-					"minimum": 30000,
-					"markdownDescription": "%config.modelsDevUpdateInterval.desc%"
 				},
 				"codexgo.showUsage": {
 					"type": "boolean",

@@ -17,7 +17,7 @@ The extension is modeled on the patterns of [OpenCode Go Provider for Copilot](h
 
 ### At a glance
 
-- Live OpenCode Go model list enriched with [models.dev](https://models.dev) metadata.
+- Live OpenCode Go model list enriched with metadata from OpenCode's official public catalog.
 - One-command sync into Codex's own `/model` picker, writing `config.toml` with backups, comments and formatting preserved.
 - Always-on loopback proxy for authentication, native Responses repair, and Chat Completions / Anthropic Messages translation.
 - Plan usage, current-session cache health, and a local request-usage dashboard in VS Code.
@@ -37,7 +37,7 @@ The extension is modeled on the patterns of [OpenCode Go Provider for Copilot](h
 
 ### What it does
 
-- **Fetch** — pulls the live model list from `https://opencode.ai/inference/go/v1/models` (with your API key) and enriches it with [models.dev](https://models.dev) metadata: context length, pricing, reasoning options, vision, deprecation, protocol.
+- **Fetch** — pulls the account-filtered model list from `https://opencode.ai/inference/go/v1/models` (with your API key) and uses OpenCode's official public catalog for context length, reasoning levels, modalities, pricing, and API protocol.
 - **Sync** — turns every supported model into a Codex model catalog and points `model_catalog_json` at it so they show up in *Codex's own* model picker. Sends no inference requests; reversible with one command.
 - **Apply** — catalog sync writes the top-level `model` and `model_provider`, the `[model_providers.opencode-go]` block, and `model_catalog_json`. Existing files are backed up before a real change, and identical writes are skipped.
 - **Local proxy** — always starts a loopback bridge while the extension is active. Native Responses requests are repaired and forwarded; Chat Completions and Anthropic Messages are translated in both directions. It replays the `reasoning_text` thinking state that OpenCode Go requires, restores missing `reasoning_content` and tool-call history across Chat turns, preserves Codex session headers, and translates streaming tool calls. Codex authenticates to the proxy with a derived, low-value token; the real upstream key never leaves SecretStorage.
@@ -157,9 +157,6 @@ DeepSeek's thinking mode rejects a forced `tool_choice` such as `{ "type": "func
 | `codexgo.codexHome` | *(empty)* | Config directory; empty = `CODEX_HOME` → `~/.codex`. |
 | `codexgo.codexExecutable` | *(empty)* | Codex executable used for `codex debug models` and `codex doctor`; empty = auto-detect CLI or the Codex extension's bundled binary. |
 | `codexgo.maxBackups` | `5` | Timestamped backups to keep (1–50). |
-| `codexgo.modelsDevMirrorUrl` | `https://modelsdev-mirror.onesoft.top/catalog.json` | models.dev mirror fallback; empty disables. |
-| `codexgo.modelsDevMirrorToken` | *(empty)* | Token for the mirror (`x-mirror-token`). |
-| `codexgo.modelsDevUpdateInterval` | `60000` | models.dev metadata refresh interval during directory sync (ms, min 30000). |
 | `codexgo.showUsage` | `true` | Show plan usage in the status bar item. |
 | `codexgo.usageRefreshInterval` | `5` | Usage refresh interval in minutes (1–60). |
 | `codexgo.usageDisplayWindow` | `rolling` | Window shown in the status bar text: `rolling` / `weekly` / `monthly`. |
@@ -171,14 +168,14 @@ DeepSeek's thinking mode rejects a forced `tool_choice` such as `{ "type": "func
 
 Model IDs and metadata degrade independently:
 
-- **Model IDs:** live `/models` → last successful list persisted in `globalState` (14-day cap) → models.dev `opencode-go` provider IDs → built-in snapshot.
-- **Metadata:** the built-in table supplies known protocol and free-model flags; models.dev supplies names, context length, pricing, reasoning levels, vision and deprecation status. A models.dev failure keeps the last good in-memory catalog and retries no sooner than 60 seconds later.
+- **Model IDs:** live account `/models` → last successful list persisted in `globalState` (14-day cap) → official public catalog IDs → built-in snapshot.
+- **Metadata:** the official public catalog supplies names, context length, pricing, reasoning levels, modalities, and protocol; the built-in table supplies known protocol aliases and free-model flags. A failed official refresh keeps the last good snapshot and retries no sooner than 60 seconds later.
 
 ### Troubleshooting
 
 - **Codex still says it cannot authenticate** — confirm the API key was saved, then reload VS Code so the extension can start the proxy and rewrite the provider token.
 - **HTTP 401/403 when refreshing the model list** — the key is invalid or the Go subscription is inactive; re-run *Set API Key*. Note the model list uses the same endpoint family as inference.
-- **No live models, only cached/catalog/built-in data** — offline or blocked; check the Output panel (*OpenCode Go for Codex*) for the fetch chain log, or configure a mirror.
+- **No live models, only cached/catalog/built-in data** — offline or blocked; check the Output panel (*OpenCode Go for Codex*) for the fetch chain log.
 - **The synced models do not appear in Codex's picker** — a new catalog is read at Codex start-up only. Restart Codex or reload the VS Code window; switching between already-listed models is live.
 - **"Codex rejected the generated model catalog"** — the previous catalog and any pre-existing `config.toml` were restored. Check that `codexgo.codexExecutable` points at a working `codex` if you use a custom build.
 - **The model answers in plain text instead of calling tools** — a catalog synced by an older build inherited OpenAI-only transports from the Codex template, so the tools never reached the gateway. Re-run *Sync OpenCode Go Models to Codex* with this version to regenerate the catalog.
@@ -229,7 +226,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the module map, startup flo
 
 ### 概览
 
-- 拉取 OpenCode Go 实时模型列表，并用 [models.dev](https://models.dev) 元数据补充。
+- 拉取 OpenCode Go 实时模型列表，并用官方公开模型目录补充元数据。
 - 一条命令把模型同步到 Codex 自带的 `/model` 选择器，写入 `config.toml` 时保留备份、注释与格式。
 - 常驻本机回环代理负责认证、原生 Responses 修复，以及 Chat Completions / Anthropic Messages 转换。
 - 状态栏显示套餐额度和快捷操作。
@@ -249,7 +246,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the module map, startup flo
 
 ### 功能
 
-- **拉取** — 用你的 API 密钥从 `https://opencode.ai/inference/go/v1/models` 获取实时模型列表，并用 [models.dev](https://models.dev) 元数据补充：上下文长度、价格、推理选项、视觉、弃用状态、协议。
+- **拉取** — 用你的 API 密钥从 `https://opencode.ai/inference/go/v1/models` 获取按账户过滤的模型列表，并用 OpenCode 官方公开目录补充上下文长度、价格、推理档位、多模态与 API 协议。
 - **同步** — 把所有受支持的模型生成为 Codex 模型目录，并让 `model_catalog_json` 指向它，从而出现在 **Codex 自带的选择器**里；不发送推理请求，一条命令即可撤销。
 - **应用** — 目录同步写入顶层 `model`、`model_provider`、`[model_providers.opencode-go]` 块和 `model_catalog_json`。只有内容真正变化时才备份并写入，相同内容会直接跳过。
 - **本地代理** —— 扩展激活期间常驻本机回环桥接服务：原生 Responses 请求经修复后转发，Chat Completions 与 Anthropic Messages 在请求和响应两个方向上转换。代理会回传 OpenCode Go 要求的 `reasoning_text` 思考状态、跨轮恢复缺失的 `reasoning_content` 与工具调用历史、保留 Codex 会话头，并转换流式工具调用。Codex 使用派生的低价值 token 访问代理，真实上游密钥不会离开 SecretStorage。
@@ -369,9 +366,6 @@ DeepSeek 的 thinking 模式不接受强制 `tool_choice`（例如 `{ "type": "f
 | `codexgo.codexHome` | *（空）* | 配置目录；空 = `CODEX_HOME` → `~/.codex`。 |
 | `codexgo.codexExecutable` | *（空）* | 用于执行 `codex debug models` 与 `codex doctor` 的 Codex 可执行文件；留空则自动探测 CLI 或 Codex 扩展自带的二进制文件。 |
 | `codexgo.maxBackups` | `5` | 保留的备份数量（1–50）。 |
-| `codexgo.modelsDevMirrorUrl` | `https://modelsdev-mirror.onesoft.top/catalog.json` | models.dev 镜像回退；留空禁用。 |
-| `codexgo.modelsDevMirrorToken` | *（空）* | 镜像令牌（`x-mirror-token`）。 |
-| `codexgo.modelsDevUpdateInterval` | `60000` | 目录同步期间 models.dev 元数据的刷新间隔（毫秒，最小 30000）。 |
 | `codexgo.showUsage` | `true` | 是否在状态栏项中显示套餐额度。 |
 | `codexgo.usageRefreshInterval` | `5` | 额度刷新间隔（分钟，1–60）。 |
 | `codexgo.usageDisplayWindow` | `rolling` | 状态栏正文显示哪个窗口：`rolling` / `weekly` / `monthly`。 |
@@ -383,14 +377,14 @@ DeepSeek 的 thinking 模式不接受强制 `tool_choice`（例如 `{ "type": "f
 
 模型 ID 与元数据分别降级：
 
-- **模型 ID：** 实时 `/models` → `globalState` 中上次成功的列表（14 天上限，重启仍可用）→ models.dev 的 `opencode-go` provider ID → 内置快照。
-- **元数据：** 内置表提供已知协议与免费模型标记；models.dev 提供名称、上下文长度、价格、推理强度、视觉与弃用状态。models.dev 拉取失败时保留上一份内存缓存，并至少在 60 秒后才重试。
+- **模型 ID：** 账户实时 `/models` → `globalState` 中上次成功的列表（14 天上限，重启仍可用）→ 官方公开目录 ID → 内置快照。
+- **元数据：** 官方公开目录提供名称、上下文长度、价格、推理档位、多模态与协议；内置表提供已知协议别名和免费模型标记。官方目录刷新失败时保留上一份快照，并至少在 60 秒后才重试。
 
 ### 故障排查
 
 - **Codex 提示无法认证** —— 确认 API 密钥已经保存，然后重载 VS Code，让扩展启动代理并重写 provider token。
 - **刷新模型列表返回 401/403** —— 密钥无效或 Go 订阅未生效；重新执行「设置 API 密钥」。模型列表与推理共用同一端点族。
-- **没有实时模型，只有缓存/目录/内置列表** —— 离线或被拦截；查看输出面板（*OpenCode Go for Codex*）中的降级链日志，或配置镜像。
+- **没有实时模型，只有缓存/目录/内置列表** —— 离线或被拦截；查看输出面板（*OpenCode Go for Codex*）中的降级链日志。
 - **同步后 Codex 的选择器里没有新模型** —— 新目录仅在 Codex 启动时读取；请重启 Codex 或重新加载 VS Code 窗口。已列出的模型之间切换是实时的。
 - **提示「Codex 拒绝了生成的模型目录」** —— 已恢复此前的目录文件；若同步前存在 `config.toml`，也已恢复该文件。若使用自定义构建，请确认 `codexgo.codexExecutable` 指向可用的 `codex`。
 - **Codex 没有生效** —— Codex 在启动时读取配置；请重载 Codex 会话或重启 VS Code 窗口。

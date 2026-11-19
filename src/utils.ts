@@ -16,9 +16,6 @@ export function getUserAgent(): string {
 	return `${USER_AGENT_NAME}/${extensionVersion}`;
 }
 
-/** models.dev 镜像用来标识流量的请求头。 */
-export const MIRROR_PLATFORM_HEADER = "opencode-go-provider-for-codex";
-
 export function delay(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
