@@ -154,7 +154,6 @@ async function openModelCenter(
 			}
 		}),
 	);
-
 	postSnapshot = () => {
 		void panel.webview.postMessage({
 			type: "snapshot",
@@ -342,6 +341,10 @@ function modelCenterLabels(): Record<string, string> {
 		rules: l10n("Rules"),
 		availability: l10n("Availability"),
 		priceUnit: l10n("$ / 1M tokens"),
+		currentPeakPrice: l10n("Current peak price"),
+		currentOffPeakPrice: l10n("Current off-peak price"),
+		currentStandardPrice: l10n("Current standard price"),
+		peakPriceTooltip: l10n("Peak multiplier: {0}x standard price"),
 		peakMultiplier: l10n("{0}x multiplier"),
 		contextTier: l10n("Above {0} context"),
 		utc: l10n("UTC"),

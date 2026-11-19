@@ -385,7 +385,7 @@ main {
 
 .table-frame {
 	position: relative;
-	height: clamp(280px, calc(100vh - 290px), 720px);
+	height: clamp(360px, calc(100vh - 190px), 820px);
 	overflow: auto;
 	border-top: 1px solid var(--grid-divider);
 }
@@ -663,6 +663,74 @@ tbody tr:nth-child(even):hover {
 	line-height: 1.35;
 }
 
+.price-mode-badge {
+	display: inline-flex;
+	align-items: center;
+	margin-top: 5px;
+	padding: 1px 5px;
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 3px;
+	gap: 3px;
+	font-size: 9px;
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.price-mode-badge::before {
+	font-size: 7px;
+	content: "•";
+}
+
+.price-mode-badge.peak {
+	color: var(--vscode-editorWarning-foreground);
+	border-color: color-mix(
+		in srgb,
+		var(--vscode-editorWarning-foreground) 55%,
+		transparent
+	);
+	background: color-mix(
+		in srgb,
+		var(--vscode-editorWarning-foreground) 12%,
+		transparent
+	);
+}
+
+.price-mode-badge.peak::before {
+	content: "▲";
+}
+
+.price-mode-badge.off-peak {
+	color: var(--vscode-charts-green);
+	border-color: color-mix(
+		in srgb,
+		var(--vscode-charts-green) 55%,
+		transparent
+	);
+	background: color-mix(
+		in srgb,
+		var(--vscode-charts-green) 12%,
+		transparent
+	);
+}
+
+.price-mode-badge.off-peak::before {
+	content: "▼";
+}
+
+.price-mode-badge.standard {
+	color: var(--vscode-charts-blue);
+	border-color: color-mix(
+		in srgb,
+		var(--vscode-charts-blue) 45%,
+		transparent
+	);
+	background: color-mix(
+		in srgb,
+		var(--vscode-charts-blue) 9%,
+		transparent
+	);
+}
+
 .price-current {
 	font-weight: 600;
 }
@@ -822,6 +890,10 @@ tbody tr:nth-child(even):hover {
 }
 
 @media (max-width: 900px) {
+	.table-frame {
+		height: clamp(320px, calc(100vh - 240px), 820px);
+	}
+
 	#page-subtitle {
 		display: none;
 	}
@@ -847,6 +919,10 @@ tbody tr:nth-child(even):hover {
 }
 
 @media (max-width: 620px) {
+	.table-frame {
+		height: clamp(300px, calc(100vh - 290px), 820px);
+	}
+
 	.page-header {
 		padding-inline: 12px;
 	}
