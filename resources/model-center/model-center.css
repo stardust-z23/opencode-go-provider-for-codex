@@ -717,20 +717,6 @@ tbody tr:nth-child(even):hover {
 	content: "▼";
 }
 
-.price-mode-badge.standard {
-	color: var(--vscode-charts-blue);
-	border-color: color-mix(
-		in srgb,
-		var(--vscode-charts-blue) 45%,
-		transparent
-	);
-	background: color-mix(
-		in srgb,
-		var(--vscode-charts-blue) 9%,
-		transparent
-	);
-}
-
 .price-current {
 	font-weight: 600;
 }

@@ -509,28 +509,20 @@
 		outputCell.append(
 			element("div", "price-block", formatPrice(model.price.output)),
 		);
-		const peak = model.price.multiplier > 1;
-		const priceMode = peak
-			? "peak"
-			: model.timeRules.length > 0
-				? "off-peak"
-				: "standard";
-		const priceModeLabel = peak
-			? labels.currentPeakPrice
-			: priceMode === "off-peak"
-				? labels.currentOffPeakPrice
-				: labels.currentStandardPrice;
-		const priceModeBadge = element(
-			"span",
-			`price-mode-badge ${priceMode}`,
-			priceModeLabel,
-		);
-		if (peak) {
-			priceModeBadge.title = formatTemplate(labels.peakPriceTooltip, [
-				String(model.price.multiplier),
-			]);
+		if (model.timeRules.length > 0) {
+			const peak = model.price.multiplier > 1;
+			const priceModeBadge = element(
+				"span",
+				`price-mode-badge ${peak ? "peak" : "off-peak"}`,
+				peak ? labels.peakPrice : labels.offPeakPrice,
+			);
+			if (peak) {
+				priceModeBadge.title = formatTemplate(labels.peakPriceTooltip, [
+					String(model.price.multiplier),
+				]);
+			}
+			outputCell.append(priceModeBadge);
 		}
-		outputCell.append(priceModeBadge);
 
 		const rulesCell = document.createElement("td");
 		rulesCell.className = "col-rules";
