@@ -131,7 +131,7 @@
 		if (!data) return;
 		renderLabels();
 		renderTabs();
-		renderPlanLegend();
+		renderUtilityBand();
 		renderColumnsMenu();
 		renderMessages();
 		renderModels();
@@ -144,7 +144,6 @@
 		byId("page-subtitle").textContent = labels.subtitle;
 		byId("models-tab").textContent = labels.modelsTab;
 		byId("updates-tab").textContent = labels.updatesTab;
-		byId("plan-legend-label").textContent = labels.planAllowances;
 		byId("official-button").textContent = labels.officialPage;
 		byId("mobile-official-button").textContent = labels.officialPage;
 		byId("refresh-button").title = labels.refresh;
@@ -173,21 +172,10 @@
 		byId("updates-panel").hidden = models;
 	}
 
-	function renderPlanLegend() {
-		const legend = byId("plan-legend");
-		legend.replaceChildren(
-			...[
-				["go", labels.go],
-				["go-plus", labels.goPlus],
-				["go-teams", labels.goTeams],
-			].map(([plan, label]) => {
-				const item = element("span", `plan-legend-item plan-${plan}`);
-				item.append(
-					element("span", "plan-legend-marker"),
-					element("span", "", label),
-				);
-				return item;
-			}),
+	function renderUtilityBand() {
+		byId("control-band").classList.toggle(
+			"has-unread",
+			data.unreadCount > 0,
 		);
 		const unread = byId("unread-label");
 		unread.textContent =
@@ -449,7 +437,7 @@
 		if (model.featured) badges.append(element("span", "badge featured", labels.featured));
 		if (model.limitedTime) badges.append(element("span", "badge limited", labels.limitedTime));
 		if (model.deprecated) badges.append(element("span", "badge limited", labels.deprecated));
-		if (model.vision) badges.append(element("span", "badge", labels.vision));
+		if (model.vision) badges.append(element("span", "badge vision", labels.vision));
 		if (model.reasoningEfforts.length > 0) {
 			badges.append(
 				element(

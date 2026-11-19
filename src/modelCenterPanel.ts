@@ -322,7 +322,6 @@ function modelCenterLabels(): Record<string, string> {
 		openUsage: l10n("Usage dashboard"),
 		refresh: l10n("Refresh model data"),
 		refreshing: l10n("Refreshing..."),
-		planAllowances: l10n("Plan allowances"),
 		go: l10n("Go"),
 		goPlus: l10n("Go Plus"),
 		goTeams: l10n("Go Teams"),

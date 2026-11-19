@@ -101,7 +101,6 @@ const zhCN: Record<string, string> = {
 	"Go": "Go",
 	"Go Plus": "Go Plus",
 	"Go Teams": "Go Teams",
-	"Plan allowances": "套餐额度",
 	"Models": "模型",
 	"Featured": "精选",
 	"Free for a limited time": "限时免费",

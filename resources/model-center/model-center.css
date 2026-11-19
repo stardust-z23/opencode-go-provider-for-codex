@@ -202,7 +202,6 @@ main {
 	padding: 0 20px 30px;
 }
 
-.control-band,
 .models-toolbar {
 	display: flex;
 	align-items: center;
@@ -211,55 +210,16 @@ main {
 }
 
 .control-band {
-	min-height: 54px;
+	display: none;
+	align-items: center;
+	justify-content: space-between;
+	min-height: 40px;
 	border-bottom: 1px solid var(--grid-divider);
+	gap: 16px;
 }
 
-.plan-control {
+.control-band.has-unread {
 	display: flex;
-	align-items: center;
-	min-width: 0;
-	gap: 10px;
-}
-
-.plan-control > strong {
-	font-size: 12px;
-	white-space: nowrap;
-}
-
-.plan-legend {
-	display: flex;
-	align-items: center;
-	flex-wrap: wrap;
-	gap: 12px;
-}
-
-.plan-legend-item {
-	display: inline-flex;
-	align-items: center;
-	color: var(--vscode-descriptionForeground);
-	white-space: nowrap;
-	font-size: 11px;
-	gap: 5px;
-}
-
-.plan-legend-marker {
-	width: 8px;
-	height: 8px;
-	border-radius: 2px;
-	background: var(--vscode-descriptionForeground);
-}
-
-.plan-legend-item.plan-go .plan-legend-marker {
-	background: var(--vscode-charts-blue);
-}
-
-.plan-legend-item.plan-go-plus .plan-legend-marker {
-	background: var(--vscode-charts-yellow);
-}
-
-.plan-legend-item.plan-go-teams .plan-legend-marker {
-	background: var(--vscode-charts-green);
 }
 
 .unread-label,
@@ -483,6 +443,16 @@ td.col-availability {
 	text-align: left;
 }
 
+th.col-monthly,
+td.col-monthly {
+	width: 140px;
+	max-width: 150px;
+}
+
+td.col-monthly {
+	white-space: normal;
+}
+
 .sort-button {
 	display: inline-flex;
 	align-items: center;
@@ -592,17 +562,48 @@ tbody tr:nth-child(even):hover {
 .badge.limited {
 	color: var(--vscode-editorWarning-foreground);
 	border-color: var(--vscode-editorWarning-foreground);
+	max-width: 120px;
+	line-height: 1.25;
+	white-space: normal;
+}
+
+.badge.vision {
+	color: var(--vscode-charts-purple);
+	border-color: color-mix(
+		in srgb,
+		var(--vscode-charts-purple) 55%,
+		transparent
+	);
+	background: color-mix(
+		in srgb,
+		var(--vscode-charts-purple) 12%,
+		transparent
+	);
+	font-weight: 600;
+}
+
+.badge.vision::before {
+	margin-right: 3px;
+	font-size: 7px;
+	content: "◉";
 }
 
 .allowance {
+	display: block;
+	max-width: 120px;
 	font-size: 13px;
 	font-weight: 600;
+	line-height: 1.3;
+	overflow-wrap: break-word;
+	white-space: normal;
 }
 
 .plan-limits {
 	display: grid;
 	gap: 4px;
+	width: max-content;
 	min-width: 130px;
+	max-width: 150px;
 }
 
 .plan-limit {
@@ -611,6 +612,7 @@ tbody tr:nth-child(even):hover {
 	gap: 6px;
 	color: var(--vscode-descriptionForeground);
 	line-height: 1.25;
+	white-space: nowrap;
 }
 
 .plan-limit::before {
@@ -832,12 +834,8 @@ tbody tr:nth-child(even):hover {
 		display: flex;
 	}
 
-	.plan-control {
-		flex-wrap: wrap;
-		padding: 8px 0;
-	}
-
 	.control-band {
+		display: flex;
 		align-items: flex-start;
 		flex-wrap: wrap;
 	}
