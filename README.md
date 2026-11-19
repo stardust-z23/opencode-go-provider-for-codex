@@ -43,6 +43,18 @@ The extension is modeled on the patterns of [OpenCode Go Provider for Copilot](h
 - **Status and usage dashboard** — the status bar item shows OpenCode Go plan usage and the current model's token-weighted cache hit rate with one decimal, e.g. `OpenCode Go Rolling: 42% · 2h 13m · Cache: 91.2%`. Clicking opens the usage dashboard; the countdown repaints every minute without a network request. New usage and quota changes are pushed into the dashboard, which also provides an immediate refresh button for both local statistics and Go quota. The hover window keeps the actions for check usage, set key, sync models, open `config.toml`, and reload the window.
 - **Local request statistics** — only inference requests actually passing through the loopback proxy are counted. The dashboard supports last hour, last 4 hours, today, yesterday, and last 7 days, and shows fresh input, cache reads/writes, output, reasoning, cache hit rate, success rate, and total request duration. It also flags suspected cache drops within a conversation. Trend charts only draw buckets that contain usage. Recent requests show 20 rows per page with pagination at both the top and bottom of the table. Records stay in extension global storage for 30 days or 50 MB and never include prompts or response content.
 
+#### Usage data boundaries
+
+The dashboard is a client-observable usage view, not a replacement for the OpenCode billing ledger.
+
+- The extension records a request when it receives final upstream `usage` or an upstream HTTP error.
+- OpenCode can still bill and log a request that is cancelled or marked `inference_failed` after the server has already processed tokens, even when the client never receives a final `usage` event.
+- Such requests can make the extension total slightly lower than the OpenCode dashboard. In a verified 2026-11-19 comparison, every request matched exactly except one cancelled request worth `496,235` tokens.
+- Total tokens use `fresh input + cache read + cache write + output`. Reasoning tokens are informational and are not added a second time because they are already inside output.
+- Compare totals only at the same cutoff time. Requests made after an exported request-log snapshot are absent from that CSV but remain visible in the live dashboard.
+
+Use OpenCode's dashboard or request-log export as the source of truth for billing. The local comparison helper is documented under [Development](#development).
+
 ### What gets written
 
 ```toml
@@ -187,6 +199,12 @@ npm run test:e2e  # local Codex CLI + fake upstream end-to-end test
 npm run test:live # live OpenCode Go test; requires OPENCODE_GO_API_KEY
 npm run test:binding # live Anthropic thinking-signature regression test
 npm run build     # package a .vsix with vsce
+
+# Compare an OpenCode request-log export with the extension's local JSONL.
+node scripts/compare-request-log.mjs \
+  <request-log.csv> \
+  <globalStorage>/usage \
+  YYYY-MM-DD
 ```
 
 Press `F5` to launch an Extension Development Host. The unit tests run in plain Node against compiled modules that do not import `vscode`, plus the local proxy and usage parsers. `test:live` and `test:binding` call OpenCode Go and require `OPENCODE_GO_API_KEY`.
@@ -233,6 +251,18 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the module map, startup flo
 - **本地代理** —— 扩展激活期间常驻本机回环桥接服务：原生 Responses 请求经修复后转发，Chat Completions 与 Anthropic Messages 在请求和响应两个方向上转换。代理会回传 OpenCode Go 要求的 `reasoning_text` 思考状态、跨轮恢复缺失的 `reasoning_content` 与工具调用历史、保留 Codex 会话头，并转换流式工具调用。Codex 使用派生的低价值 token 访问代理，真实上游密钥不会离开 SecretStorage。
 - **状态栏与使用统计** —— 状态栏显示 OpenCode Go 套餐额度和当前会话、当前模型的 Token 加权缓存命中率（保留一位小数），例如 `OpenCode Go Rolling: 42% · 2h 13m · 缓存命中率：91.2%`。点击状态栏打开统计面板；额度倒计时每分钟重绘一次，不会重新请求网络。新请求和额度变化会推送到面板，同时提供刷新本地统计和 Go 额度的立即刷新按钮。悬停窗口继续提供额度刷新、设置密钥、同步模型、打开 `config.toml` 和重新加载窗口。
 - **本扩展请求统计** —— 只统计实际经过本机回环代理的推理请求。面板支持最近 1 小时、过去 4 小时、今天、昨天和最近 7 天，并展示新增输入、缓存读取、缓存写入、输出、reasoning、缓存命中率、成功率和各请求总耗时，同时检测同一会话中的缓存骤降。趋势图只绘制产生用量的节点；最近请求每页固定 20 条，表格顶部和底部均可翻页查看全部匹配记录。记录保存在扩展全局存储中，默认保留 30 天、最多 50 MB；不保存对话正文。
+
+#### 统计口径与账单差异
+
+本扩展的统计面板是客户端可观测用量，不等同于 OpenCode 后台账单。
+
+- 扩展在收到上游最终 `usage`，或收到上游 HTTP 错误时写入记录。
+- OpenCode 服务端可能已经处理了一部分 Token，但客户端取消请求或推理中断后没有收到最终 `usage`。这类请求可能被标记为 `cancelled` / `inference_failed`，并仍计入后台用量。
+- 因此扩展统计可能略低于 OpenCode 后台。2026-11-19 已核对的一次日志中，其余请求全部逐项一致，差异只来自一条取消请求，其用量为 `496,235 Tokens`。
+- 总计公式为 `新增输入 + 缓存读取 + 缓存写入 + 输出`。reasoning Token 已包含在输出中，不会再重复加入。
+- 对比时必须选择相同截止时间。CSV 导出后产生的新请求不会出现在 CSV 中，但仍会显示在实时面板里。
+
+账单和最终计费请以 OpenCode 后台或请求日志导出为准。对照脚本见[开发](#开发)一节。
 
 ### 写入的内容
 
@@ -378,6 +408,12 @@ npm run test:e2e  # 本机 Codex CLI + 假上游的端到端测试
 npm run test:live # 真实 OpenCode Go 测试，需要 OPENCODE_GO_API_KEY
 npm run test:binding # Anthropic thinking 签名的真实回归测试
 npm run build     # 用 vsce 打包 .vsix
+
+# 将 OpenCode 请求日志导出与扩展本地 JSONL 逐项对比
+node scripts/compare-request-log.mjs \
+  <request-log.csv> \
+  <globalStorage>/usage \
+  YYYY-MM-DD
 ```
 
 按 `F5` 启动扩展开发宿主。单元测试在纯 Node 中运行，覆盖不依赖 `vscode` 的模块，以及本地代理和额度解析器。`test:live` 与 `test:binding` 会访问 OpenCode Go，需要设置 `OPENCODE_GO_API_KEY`。

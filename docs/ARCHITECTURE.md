@@ -185,6 +185,8 @@ Codex 的模型选择器会用内部可见档位列表过滤目录，默认不�
 - Webview 使用原生 HTML/CSS/JS，无前端框架；请求表每页固定 20 条，通过 offset/limit 查询全部匹配记录。
 - 新 usage 写入和额度状态变化会通过扩展内事件推送到 Webview；顶部立即刷新按钮强制重载本地 JSONL 统计并刷新 Go 额度。
 - 时间筛选包含最近 1 小时、过去 4 小时、今天、昨天和最近 7 天；“昨天”按本地自然日边界计算。
+- 客户端取消或推理中断时，上游可能已经计费但没有发送最终 usage。扩展无法凭空还原该请求的服务端 Token，因此本地统计可能低于 OpenCode 后台；账单以 OpenCode 为准。
+- `scripts/compare-request-log.mjs` 可按“新增输入 ↔ fresh input、缓存读取、缓存写入、输出、reasoning”逐个请求比对 OpenCode CSV 和本地 JSONL，并单独列出只存在于一侧的签名。
 
 ## 响应元数据
 
@@ -216,6 +218,7 @@ Codex 的模型选择器会用内部可见档位列表过滤目录，默认不�
 | `npm run test:e2e` | 本机 Codex CLI + 假上游，验证完整 Responses 桥接 |
 | `npm run test:live` | 真实 OpenCode Go，多轮 Codex 对话 |
 | `npm run test:binding` | 真实 Anthropic thinking 签名与前缀变化回归 |
+| `node scripts/compare-request-log.mjs <csv> <usage-dir> <YYYY-MM-DD>` | 对比 OpenCode 请求日志与扩展本地 usage，定位取消、漏记或重复 |
 
 `test:live` 和 `test:binding` 需要 `OPENCODE_GO_API_KEY`。`test:e2e` 需要本机 `codex` 可执行文件。
 
