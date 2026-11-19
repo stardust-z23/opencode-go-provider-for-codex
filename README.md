@@ -21,6 +21,7 @@ The extension is modeled on the patterns of [OpenCode Go Provider for Copilot](h
 - One-command sync into Codex's own `/model` picker, writing `config.toml` with backups, comments and formatting preserved.
 - Always-on loopback proxy for authentication, native Responses repair, and Chat Completions / Anthropic Messages translation.
 - Plan usage, current-session cache health, and a local request-usage dashboard in VS Code.
+- A model center with official pricing, monthly allowances, context tiers, peak/date multipliers, change history, and aggregated update notifications.
 
 ### Quick start
 
@@ -42,6 +43,7 @@ The extension is modeled on the patterns of [OpenCode Go Provider for Copilot](h
 - **Local proxy** — always starts a loopback bridge while the extension is active. Native Responses requests are repaired and forwarded; Chat Completions and Anthropic Messages are translated in both directions. It replays the `reasoning_text` thinking state that OpenCode Go requires, restores missing `reasoning_content` and tool-call history across Chat turns, preserves Codex session headers, and translates streaming tool calls. Codex authenticates to the proxy with a derived, low-value token; the real upstream key never leaves SecretStorage.
 - **Status and usage dashboard** — the status bar item shows OpenCode Go plan usage and the current model's token-weighted cache hit rate with one decimal, e.g. `OpenCode Go Rolling: 42% · 2h 13m · Cache: 91.2%`. Clicking opens the usage dashboard; the countdown repaints every minute without a network request. New usage and quota changes are pushed into the dashboard, which also provides an immediate refresh button for both local statistics and Go quota. The hover window keeps the actions for check usage, set key, sync models, open `config.toml`, and reload the window.
 - **Local request statistics** — only inference requests actually passing through the loopback proxy are counted. The dashboard supports last hour, last 4 hours, today, yesterday, and last 7 days, and shows fresh input, cache reads/writes, output, reasoning, cache hit rate, success rate, and total request duration. It also flags suspected cache drops within a conversation. Trend charts only draw buckets that contain usage. Recent requests show 20 rows per page with pagination at both the top and bottom of the table. Records stay in extension global storage for 30 days or 50 MB and never include prompts or response content.
+- **Model and pricing center** — fetched hourly from OpenCode's public model catalog and official changelog RSS. It shows model-level monthly allowances for Go, Go Plus, and Go Teams; base prices, context-tier overrides, scheduled/peak multipliers, context/output limits, privacy and region flags, and availability metadata. The plan is inferred from `usage.opencode.billing_source` when available, defaults to Go, and can be switched manually for account types that do not expose a marker. Model and news changes are aggregated into one notification with an unread status-bar badge and retained for 90 days. New model IDs can refresh an already-managed Codex catalog automatically; price and quota changes only notify.
 
 #### Usage data boundaries
 
@@ -142,6 +144,7 @@ DeepSeek's thinking mode rejects a forced `tool_choice` such as `{ "type": "func
 | `OpenCode Go for Codex: Get OpenCode Go API Key` | Open the OpenCode auth page. |
 | `OpenCode Go for Codex: Check OpenCode Go Usage` | Refresh the plan usage shown in the status bar. |
 | `OpenCode Go for Codex: Open OpenCode Go Usage Dashboard` | Open quota and local request statistics; also the status bar click action. |
+| `OpenCode Go for Codex: Open OpenCode Go Model Center` | Open official model pricing, monthly allowances, change history, and official news. Also available from the top of the usage dashboard. |
 | `OpenCode Go for Codex: Sync OpenCode Go Models to Codex` | Put every model supported by the background proxy into Codex's own model picker and apply a usable top-level model (no probing, no inference requests). |
 | `OpenCode Go for Codex: Use Codex's Built-in Model List` | Remove `model_catalog_json` and the generated catalog file. |
 | `OpenCode Go for Codex: Open Codex config.toml` | Open the config file in the editor. |
@@ -230,6 +233,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the module map, startup flo
 - 一条命令把模型同步到 Codex 自带的 `/model` 选择器，写入 `config.toml` 时保留备份、注释与格式。
 - 常驻本机回环代理负责认证、原生 Responses 修复，以及 Chat Completions / Anthropic Messages 转换。
 - 状态栏显示套餐额度和快捷操作。
+- 模型中心展示官方价格、月额度、上下文分档、峰谷/日期倍率、变更历史与官方消息，并聚合提醒。
 
 ### 快速开始
 
@@ -251,6 +255,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the module map, startup flo
 - **本地代理** —— 扩展激活期间常驻本机回环桥接服务：原生 Responses 请求经修复后转发，Chat Completions 与 Anthropic Messages 在请求和响应两个方向上转换。代理会回传 OpenCode Go 要求的 `reasoning_text` 思考状态、跨轮恢复缺失的 `reasoning_content` 与工具调用历史、保留 Codex 会话头，并转换流式工具调用。Codex 使用派生的低价值 token 访问代理，真实上游密钥不会离开 SecretStorage。
 - **状态栏与使用统计** —— 状态栏显示 OpenCode Go 套餐额度和当前会话、当前模型的 Token 加权缓存命中率（保留一位小数），例如 `OpenCode Go Rolling: 42% · 2h 13m · 缓存命中率：91.2%`。点击状态栏打开统计面板；额度倒计时每分钟重绘一次，不会重新请求网络。新请求和额度变化会推送到面板，同时提供刷新本地统计和 Go 额度的立即刷新按钮。悬停窗口继续提供额度刷新、设置密钥、同步模型、打开 `config.toml` 和重新加载窗口。
 - **本扩展请求统计** —— 只统计实际经过本机回环代理的推理请求。面板支持最近 1 小时、过去 4 小时、今天、昨天和最近 7 天，并展示新增输入、缓存读取、缓存写入、输出、reasoning、缓存命中率、成功率和各请求总耗时，同时检测同一会话中的缓存骤降。趋势图只绘制产生用量的节点；最近请求每页固定 20 条，表格顶部和底部均可翻页查看全部匹配记录。记录保存在扩展全局存储中，默认保留 30 天、最多 50 MB；不保存对话正文。
+- **模型与价格中心** —— 每小时拉取 OpenCode 官方公开模型目录与 changelog RSS，展示 Go、Go Plus、Go Teams 各模型月额度、基础价格、上下文分档、日期/峰谷倍率、上下文与输出限制、训练与地区标记。套餐优先从 `usage.opencode.billing_source` 自动识别，无法识别时默认 Go，也可手动切换以查看 Teams 等额度。模型和官方消息变化会聚合为一条通知，并提供未读状态栏徽标；历史保留 90 天。出现新模型时只对已由本扩展接管且当前仍启用的 Codex 目录自动同步；价格和额度变化只提醒，不自动改目录。
 
 #### 统计口径与账单差异
 
@@ -351,6 +356,7 @@ DeepSeek 的 thinking 模式不接受强制 `tool_choice`（例如 `{ "type": "f
 | `OpenCode Go for Codex: 获取 OpenCode Go API 密钥` | 打开 OpenCode 认证页面。 |
 | `OpenCode Go for Codex: 查看 OpenCode Go 额度` | 刷新状态栏中显示的套餐用量。 |
 | `OpenCode Go for Codex: 打开 OpenCode Go 使用统计` | 打开额度与本扩展请求统计面板；状态栏点击同样触发。 |
+| `OpenCode Go for Codex: 打开 OpenCode Go 模型中心` | 查看官方模型价格、月额度、90 天变更历史与官方消息；也可从使用统计面板顶部直接打开。 |
 | `OpenCode Go for Codex: 将 OpenCode Go 模型同步到 Codex` | 把后台代理支持的全部模型写入 Codex 自带的选择器，并应用一个可用的顶层模型（不做探测、不发推理请求）。 |
 | `OpenCode Go for Codex: 改用 Codex 内置模型列表` | 移除 `model_catalog_json` 并删除生成的目录文件。 |
 | `OpenCode Go for Codex: 打开 Codex config.toml` | 在编辑器中打开配置文件。 |

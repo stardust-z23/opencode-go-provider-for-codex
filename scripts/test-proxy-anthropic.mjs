@@ -291,7 +291,10 @@ test("Anthropic Messages proxy converts streaming thinking, text and tools", asy
 			writeEvent(res, "message_delta", {
 				type: "message_delta",
 				delta: { stop_reason: "tool_use" },
-				usage: { output_tokens: 5 },
+				usage: {
+					output_tokens: 5,
+					opencode: { billing_source: "go-plus" },
+				},
 			});
 			writeEvent(res, "message_stop", { type: "message_stop" });
 			res.end();
@@ -346,6 +349,7 @@ test("Anthropic Messages proxy converts streaming thinking, text and tools", asy
 		const completed = parseSseEvent(text, "response.completed");
 		assert.equal(completed.response.usage.input_tokens_details.cached_tokens, 0);
 		assert.equal(completed.response.usage.input_tokens_details.cache_write_tokens, 0);
+		assert.equal(completed.response.usage.opencode.billing_source, "go-plus");
 		assert.equal(seen.length, 1);
 		assert.equal(seen[0].url, "/v1/messages");
 		assert.equal(seen[0].headers["x-api-key"], "test-key");

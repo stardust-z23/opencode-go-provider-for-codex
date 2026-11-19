@@ -32,6 +32,7 @@
 
 	const byId = (id) => document.getElementById(id);
 	const refreshButton = byId("refresh-button");
+	const modelCenterButton = byId("model-center-button");
 	const menuButton = byId("menu-button");
 	const previousPageButtons = [...document.querySelectorAll("[data-page-prev]")];
 	const nextPageButtons = [...document.querySelectorAll("[data-page-next]")];
@@ -83,6 +84,9 @@
 		refreshButton.classList.add("refreshing");
 		setTimeout(() => refreshButton.classList.remove("refreshing"), 750);
 		vscode.postMessage({ type: "action", action: "refreshAll" });
+	});
+	modelCenterButton.addEventListener("click", () => {
+		vscode.postMessage({ type: "action", action: "openModelCenter" });
 	});
 	menuButton.addEventListener("click", () => {
 		setMenuOpen(actionMenu.hidden);
@@ -144,6 +148,7 @@
 		menuButton.setAttribute("aria-label", labels.moreActions);
 		refreshButton.title = labels.refreshNow;
 		refreshButton.setAttribute("aria-label", labels.refreshNow);
+		modelCenterButton.textContent = labels.modelCenter;
 		const actionLabels = {
 			refreshQuota: labels.refreshQuota,
 			setApiKey: labels.setApiKey,

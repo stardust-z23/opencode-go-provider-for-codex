@@ -126,6 +126,24 @@ h3 {
 	gap: 2px;
 }
 
+.text-button {
+	height: 30px;
+	padding: 0 8px;
+	border: 1px solid transparent;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--vscode-textLink-foreground);
+	white-space: nowrap;
+	font-size: 11px;
+}
+
+.text-button:hover,
+.text-button:focus-visible {
+	background: var(--vscode-toolbar-hoverBackground);
+	border-color: var(--vscode-focusBorder);
+	outline: none;
+}
+
 .icon-button.refreshing span {
 	animation: refresh-spin 700ms linear;
 }
@@ -697,6 +715,12 @@ tbody tr:nth-child(even):hover {
 	.page-header {
 		width: 100%;
 		padding-inline: 12px;
+	}
+
+	.text-button {
+		max-width: 96px;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	main {

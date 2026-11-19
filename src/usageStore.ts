@@ -119,6 +119,22 @@ export class UsageStore {
 		return latest;
 	}
 
+	getLatestBillingSource(): string | undefined {
+		let latestAt = -1;
+		let billingSource: string | undefined;
+		for (const record of this.records.values()) {
+			if (
+				record.success &&
+				record.billingSource &&
+				record.startedAt >= latestAt
+			) {
+				latestAt = record.startedAt;
+				billingSource = record.billingSource;
+			}
+		}
+		return billingSource;
+	}
+
 	onDidChange(listener: () => void): { dispose: () => void } {
 		this.listeners.add(listener);
 		return {

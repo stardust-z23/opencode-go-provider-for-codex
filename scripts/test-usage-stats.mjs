@@ -47,6 +47,7 @@ test("createUsageRecord normalizes cache-inclusive input", () => {
 			requestedModel: "deepseek-v4.1-flash-responses",
 			sessionId: "session-1",
 			clientRequestId: "client-1",
+			billingSource: "go-plus",
 			stream: true,
 			inputTokens: 1000,
 			cachedInputTokens: 600,
@@ -63,6 +64,7 @@ test("createUsageRecord normalizes cache-inclusive input", () => {
 	assert.equal(created.realTotalTokens, 1200);
 	assert.equal(created.success, true);
 	assert.equal(created.requestId, "client-1");
+	assert.equal(created.billingSource, "go-plus");
 	assert.equal(created.reasoningTokens, 80);
 });
 
@@ -269,6 +271,7 @@ test("UsageStore persists and reloads compact JSONL records", async () => {
 			durationMs: 1_500,
 			model: "deepseek-v4.1-flash",
 			sessionId: "session-persisted",
+			billingSource: "go-plus",
 			inputTokens: 1_000,
 			cachedInputTokens: 600,
 			cacheWriteTokens: 100,
@@ -285,6 +288,8 @@ test("UsageStore persists and reloads compact JSONL records", async () => {
 		assert.equal(snapshot.records[0].id, "persisted-1");
 		assert.equal(snapshot.records[0].freshInputTokens, 300);
 		assert.equal(snapshot.records[0].sessionId, "session-persisted");
+		assert.equal(snapshot.records[0].billingSource, "go-plus");
+		assert.equal(reloaded.getLatestBillingSource(), "go-plus");
 	} finally {
 		await fs.rm(root, { recursive: true, force: true });
 	}

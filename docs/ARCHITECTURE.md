@@ -27,19 +27,23 @@
 | `src/usageStore.ts` | 30 天 JSONL 持久化、内存索引、轻量清理与缓存状态汇总 |
 | `src/usagePanel.ts` | 使用统计 Webview、筛选、维护菜单与消息桥 |
 | `src/usageService.ts` | 当前扩展实例的 usage store 单例 |
+| `src/modelCenterData.ts` | 公开模型解析、价格分档/倍率、目录 diff、RSS 解析 |
+| `src/modelCenterService.ts` | 每小时模型/RSS 拉取、90 天历史、未读状态与套餐推断 |
+| `src/modelCenterPanel.ts` | 模型中心 Webview、模型行投影、未读徽标与外部链接 |
 | `src/apiKey.ts` | SecretStorage 与旧环境变量的一次性迁移 |
 | `src/localize.ts` | 以英文原文为键的 zh-CN 字典 |
 
 ## 启动流程
 
 1. `activate()` 初始化日志器与 usage store。
-2. 创建状态栏项并启动额度轮询。
-3. 注册全部命令和使用统计面板命令。
+2. 初始化模型中心状态，并创建状态栏项、未读徽标与额度轮询。
+3. 注册全部命令、使用统计面板和模型中心命令。
 4. 异步初始化常驻代理：
    - 已配置 OpenCode Go provider 且存在 API 密钥时自动启动。
    - 旧版通过环境变量提供的密钥会先迁移到 SecretStorage。
    - 启动成功后把 provider 的 `base_url` 和派生 bearer token 写入配置。
-5. 首次运行且没有密钥时打开 walkthrough。模型发现只在用户执行目录同步时运行。
+5. 模型中心启动后延迟 5 秒做首次公开目录/RSS 基线，此后每小时刷新。
+6. 首次运行且没有密钥时打开 walkthrough。需要推理的模型发现只在用户执行目录同步或模型自动同步时运行。
 
 ## 配置编辑约束
 
@@ -188,11 +192,27 @@ Codex 的模型选择器会用内部可见档位列表过滤目录，默认不�
 - 客户端取消或推理中断时，上游可能已经计费但没有发送最终 usage。扩展无法凭空还原该请求的服务端 Token，因此本地统计可能低于 OpenCode 后台；账单以 OpenCode 为准。
 - `scripts/compare-request-log.mjs` 可按“新增输入 ↔ fresh input、缓存读取、缓存写入、输出、reasoning”逐个请求比对 OpenCode CSV 和本地 JSONL，并单独列出只存在于一侧的签名。
 
+## 模型中心
+
+模型中心使用不需要 API 密钥的公开数据源：
+
+- 模型目录：`https://opencode.ai/inference/go/v1/models`
+- 官方动态：`https://opencode.ai/console/changelog/rss.xml`
+
+两者每小时刷新一次，RSS 使用 `ETag` / `Last-Modified` 条件请求。首次成功拉取只建立基线，不发通知；之后模型新增、下线、月额度、价格、上下文限制、可用性、元数据变化和官方新条目会聚合为一条通知，并累计未读徽标。
+
+- 状态保存在 `<globalStorage>/model-center/state.json`，变更与消息保留 90 天。
+- `usage.opencode.billing_source` 的 `go` / `go-plus` 会用于自动选择套餐；没有稳定标记时默认 `go`，用户可手动选择 `go-teams`。
+- 模型界面同时展示基础价格、上下文 overrides、时间 multipliers、上下文/输出限制、训练/ZDR/地区标记。
+- 公开目录出现新模型时，`catalogSync.autoSyncModelCatalogForNewModels()` 只在以下条件同时满足时自动重建目录：Codex 的 `model_catalog_json` 指向本扩展文件、生成文件存在、API 密钥与本地代理就绪、Codex 可执行文件可探测。
+- 自动同步使用跨窗口锁文件，失败沿用原有回滚路径；价格与额度变化只提醒，不修改 Codex 目录。
+
 ## 响应元数据
 
 - 原生 Responses 的 `response.completed` / `response.incomplete` usage 原样透传。
 - Chat Completions 会请求 `stream_options.include_usage`，并把 `prompt_tokens` / `completion_tokens`、缓存 token 与 reasoning token 换算成 Responses `usage`。
 - Anthropic Messages 会合并 `message_start` 与 `message_delta` 的 usage，并换算成同一结构。
+- 三条协议路径都会保留 `usage.opencode`，因此 `billing_source` 能进入本地 usage 记录，用于套餐推断。
 - Codex 因此可以获得每轮 input/output/total token 数。代理同时记录每个上游请求的 trace、会话头、耗时和 usage；扩展持久化最近 30 天的轻量统计，但不记录首 token 延迟或 tokens/s。
 
 ## 多窗口与端口
@@ -214,7 +234,7 @@ Codex 的模型选择器会用内部可见档位列表过滤目录，默认不�
 
 | 命令 | 覆盖范围 |
 |---|---|
-| `npm test` | 编译后运行 TOML、模型合并、目录、额度、Chat 代理、Anthropic 代理测试 |
+| `npm test` | 编译后运行 TOML、模型合并、目录、模型中心数据、额度、usage、Chat 代理、Anthropic 代理测试 |
 | `npm run test:e2e` | 本机 Codex CLI + 假上游，验证完整 Responses 桥接 |
 | `npm run test:live` | 真实 OpenCode Go，多轮 Codex 对话 |
 | `npm run test:binding` | 真实 Anthropic thinking 签名与前缀变化回归 |

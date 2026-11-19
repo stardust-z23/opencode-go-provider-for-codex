@@ -525,6 +525,7 @@ function reportResponsesUsage(
 	}
 	const inputDetails = isRecord(usage.input_tokens_details) ? usage.input_tokens_details : {};
 	const outputDetails = isRecord(usage.output_tokens_details) ? usage.output_tokens_details : {};
+	const billingSource = openCodeBillingSource(usage);
 	options.log?.("proxy.usage", {
 		...requestLogIdentity(context),
 		purpose,
@@ -536,6 +537,7 @@ function reportResponsesUsage(
 		cachedInputTokens: numberValue(inputDetails.cached_tokens),
 		cacheWriteTokens: numberValue(inputDetails.cache_write_tokens),
 		reasoningTokens: numberValue(outputDetails.reasoning_tokens),
+		billingSource,
 	});
 }
 
@@ -2190,7 +2192,16 @@ function chatUsageToResponsesUsage(raw: unknown): Record<string, unknown> {
 		output_tokens_details: {
 			reasoning_tokens: numberValue(completionDetails.reasoning_tokens),
 		},
+		...(isRecord(usage.opencode) ? { opencode: usage.opencode } : {}),
 	};
+}
+
+function openCodeBillingSource(usage: Record<string, unknown>): string | undefined {
+	const opencode = isRecord(usage.opencode) ? usage.opencode : undefined;
+	const billingSource = opencode?.billing_source ?? usage.billing_source;
+	return typeof billingSource === "string" && billingSource.trim()
+		? billingSource.trim()
+		: undefined;
 }
 
 function splitInlineThinking(text: string): { text: string; reasoning: string } {

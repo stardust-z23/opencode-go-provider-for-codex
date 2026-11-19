@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="{{lang}}">
+	<head>
+		<meta charset="UTF-8" />
+		<meta
+			http-equiv="Content-Security-Policy"
+			content="default-src 'none'; style-src {{cspSource}} 'unsafe-inline'; img-src {{cspSource}} data:; script-src 'nonce-{{nonce}}';"
+		/>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<link rel="stylesheet" href="{{styleUri}}" />
+		<title>OpenCode Go</title>
+	</head>
+	<body>
+		<header class="page-header">
+			<div class="title-block">
+				<h1 id="page-title">OpenCode Go</h1>
+				<span id="page-subtitle" class="muted"></span>
+			</div>
+			<div class="header-actions">
+				<button id="limits-button" class="text-button" type="button"></button>
+				<button id="pricing-button" class="text-button" type="button"></button>
+				<button
+					id="refresh-button"
+					class="icon-button"
+					type="button"
+					aria-label="Refresh"
+				>
+					<span aria-hidden="true">&#x21BB;</span>
+				</button>
+				<button
+					id="usage-button"
+					class="icon-button"
+					type="button"
+					aria-label="Usage dashboard"
+				>
+					<span aria-hidden="true">&#x2197;</span>
+				</button>
+			</div>
+		</header>
+
+		<main>
+			<section class="control-band" aria-label="Plan">
+				<div class="plan-control">
+					<strong id="plan-label"></strong>
+					<div id="plan-segments" class="segmented-control" role="group"></div>
+					<span id="plan-source" class="muted"></span>
+				</div>
+				<div id="unread-label" class="unread-label"></div>
+				<div class="mobile-official-links">
+					<button id="mobile-limits-button" class="text-button" type="button"></button>
+					<button id="mobile-pricing-button" class="text-button" type="button"></button>
+				</div>
+			</section>
+
+			<div id="model-error" class="error-band" hidden></div>
+			<div id="news-error" class="error-band" hidden></div>
+			<div id="sync-state" class="sync-state" hidden></div>
+
+			<nav class="tab-bar" role="tablist">
+				<button
+					id="models-tab"
+					type="button"
+					role="tab"
+					aria-controls="models-panel"
+				></button>
+				<button
+					id="updates-tab"
+					type="button"
+					role="tab"
+					aria-controls="updates-panel"
+				></button>
+			</nav>
+
+			<section id="models-panel" role="tabpanel" aria-labelledby="models-tab">
+				<div class="models-toolbar">
+					<label class="search-control">
+						<span class="search-icon" aria-hidden="true">&#x2315;</span>
+						<input id="model-search" type="search" autocomplete="off" />
+					</label>
+					<div id="models-meta" class="toolbar-meta"></div>
+				</div>
+				<div class="table-frame">
+					<table>
+						<thead>
+							<tr id="models-head"></tr>
+						</thead>
+						<tbody id="models-body"></tbody>
+					</table>
+					<div id="models-empty" class="empty-state" hidden></div>
+				</div>
+			</section>
+
+			<section
+				id="updates-panel"
+				role="tabpanel"
+				aria-labelledby="updates-tab"
+				hidden
+			>
+				<div class="updates-layout">
+					<section class="updates-column" aria-labelledby="changes-title">
+						<div class="section-heading">
+							<h2 id="changes-title"></h2>
+							<span id="changes-count" class="count-label"></span>
+						</div>
+						<div id="changes-list" class="update-list"></div>
+						<p id="changes-empty" class="empty-state" hidden></p>
+					</section>
+					<section class="updates-column" aria-labelledby="news-title">
+						<div class="section-heading">
+							<h2 id="news-title"></h2>
+							<span id="news-count" class="count-label"></span>
+						</div>
+						<div id="news-list" class="update-list"></div>
+						<p id="news-empty" class="empty-state" hidden></p>
+					</section>
+				</div>
+				<p id="history-window" class="history-note"></p>
+			</section>
+		</main>
+
+		<script nonce="{{nonce}}" src="{{scriptUri}}"></script>
+	</body>
+</html>

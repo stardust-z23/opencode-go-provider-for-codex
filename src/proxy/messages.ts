@@ -1576,6 +1576,7 @@ function anthropicUsageToResponsesUsage(raw: unknown): Record<string, unknown> {
 			cache_write_tokens: cacheCreation,
 		},
 		output_tokens_details: { reasoning_tokens: reasoning },
+		...(isRecord(usage.opencode) ? { opencode: usage.opencode } : {}),
 	};
 }
 

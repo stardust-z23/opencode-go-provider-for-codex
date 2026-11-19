@@ -192,7 +192,7 @@ test("native Responses proxy logs final stream usage", async () => {
 			res.end(
 				[
 					'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_usage","status":"in_progress"}}\n\n',
-					'event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_usage","status":"completed","usage":{"input_tokens":301003,"output_tokens":227,"total_tokens":301230,"input_tokens_details":{"cached_tokens":571520},"output_tokens_details":{"reasoning_tokens":79}}}}\n\n',
+					'event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_usage","status":"completed","usage":{"input_tokens":301003,"output_tokens":227,"total_tokens":301230,"input_tokens_details":{"cached_tokens":571520},"output_tokens_details":{"reasoning_tokens":79},"opencode":{"billing_source":"go-plus"}}}}\n\n',
 				].join(""),
 			);
 		});
@@ -228,6 +228,7 @@ test("native Responses proxy logs final stream usage", async () => {
 		assert.equal(usage.detail.outputTokens, 227);
 		assert.equal(usage.detail.cachedInputTokens, 571520);
 		assert.equal(usage.detail.reasoningTokens, 79);
+		assert.equal(usage.detail.billingSource, "go-plus");
 		assert.match(usage.detail.traceId, /^[0-9a-f-]{36}$/);
 		assert.equal(usage.detail.sessionId, "session-usage");
 		assert.equal(usage.detail.clientRequestId, "client-usage");
@@ -468,7 +469,12 @@ test("chat proxy restores tool call and reasoning from previous_response_id", as
 								finish_reason: "tool_calls",
 							},
 						],
-						usage: {},
+						usage: {
+							prompt_tokens: 100,
+							completion_tokens: 20,
+							total_tokens: 120,
+							opencode: { billing_source: "go-plus" },
+						},
 					}),
 				);
 				return;
@@ -502,6 +508,7 @@ test("chat proxy restores tool call and reasoning from previous_response_id", as
 		});
 		assert.equal(firstResponse.status, 200);
 		const first = await firstResponse.json();
+		assert.equal(first.usage.opencode.billing_source, "go-plus");
 		assert.ok(first.output.some((item) => item.type === "reasoning"));
 		assert.ok(first.output.some((item) => item.type === "function_call"));
 

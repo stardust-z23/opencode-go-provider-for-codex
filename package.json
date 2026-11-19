@@ -17,7 +17,7 @@
 		"type": "git",
 		"url": "https://github.com/stardust-z23/opencode-go-provider-for-codex"
 	},
-	"version": "0.1.30",
+	"version": "0.2.0",
 	"engines": {
 		"vscode": "^1.116.0"
 	},
@@ -70,6 +70,12 @@
 				"category": "%commandCategory%",
 				"title": "%command.openUsageDashboard%",
 				"icon": "$(graph)"
+			},
+			{
+				"command": "codexgo.openModelCenter",
+				"category": "%commandCategory%",
+				"title": "%command.openModelCenter%",
+				"icon": "$(library)"
 			},
 			{
 				"command": "codexgo.openCodexConfig",
@@ -207,7 +213,7 @@
 		"clean": "node scripts/clean-out.mjs",
 		"compile": "npm run clean && tsc -p ./",
 		"watch": "tsc -watch -p ./",
-		"test": "npm run compile && node scripts/test-toml-edit.mjs && node scripts/test-model-merge.mjs && node scripts/test-catalog.mjs && node scripts/test-go-usage.mjs && node scripts/test-usage-stats.mjs && node --check resources/usage-dashboard/dashboard.js && node scripts/test-proxy-chat.mjs && node scripts/test-proxy-anthropic.mjs",
+		"test": "npm run compile && node scripts/test-toml-edit.mjs && node scripts/test-model-merge.mjs && node scripts/test-catalog.mjs && node scripts/test-model-center-data.mjs && node scripts/test-go-usage.mjs && node scripts/test-usage-stats.mjs && node --check resources/usage-dashboard/dashboard.js && node --check resources/model-center/model-center.js && node scripts/test-proxy-chat.mjs && node scripts/test-proxy-anthropic.mjs",
 		"test:e2e": "npm run compile && node scripts/test-codex-e2e.mjs",
 		"test:live": "npm run compile && node scripts/test-codex-live.mjs",
 		"test:binding": "node scripts/test-thinking-binding-live.mjs",

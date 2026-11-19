@@ -37,12 +37,32 @@ import { readConfigText, restoreConfigText, updateConfigText } from "./codexConf
 import { l10n, l10nFormat } from "./localize";
 import { logger } from "./logger";
 import { describeModelFetchError, prepareModelList } from "./modelList";
-import { removeTopLevelKey } from "./tomlEdit";
+import { extractTopLevelValue, removeTopLevelKey } from "./tomlEdit";
 import { ensureProxyStarted, getProxyProviderAuth, isProxyActive } from "./proxyController";
 
 export interface CatalogSyncContext extends ApiKeyContext {
 	globalState: vscode.Memento;
 }
+
+export interface CatalogAutoSyncResult {
+	status: "synced" | "skipped" | "failed";
+	detail?: string;
+	count?: number;
+}
+
+type CatalogSyncOutcome =
+	| {
+			kind: "ok";
+			count: number;
+			excluded: number;
+			configPath: string;
+			changed: boolean;
+			catalogChanged: boolean;
+	  }
+	| { kind: "error"; message: string }
+	| { kind: "none"; counted: number }
+	| { kind: "cancelled" }
+	| { kind: "rollback"; detail: string };
 
 /** 解析显式指定的可执行文件（设置项 `codexgo.codexExecutable`）。 */
 function getCodexExecutableSetting(): string {
@@ -83,7 +103,6 @@ export async function syncModelCatalogCommand(ctx: CatalogSyncContext): Promise<
 	}
 
 	const location = getConfigLocation();
-	const catalogPath = catalogPathFor(location.home);
 
 	const outcome = await vscode.window.withProgress(
 		{
@@ -92,92 +111,14 @@ export async function syncModelCatalogCommand(ctx: CatalogSyncContext): Promise<
 			cancellable: true,
 		},
 		async (progress, token) => {
-			progress.report({ message: l10n("Fetching the model list…") });
-			let models;
-			try {
-				models = await prepareModelList({ force: true }, token, ctx.secrets, ctx.globalState);
-			} catch (err) {
-				return { kind: "error" as const, message: describeModelFetchError(err) };
-			}
-			if (models.length === 0) {
-				return { kind: "error" as const, message: l10n("OpenCode Go returned no models.") };
-			}
-			if (token.isCancellationRequested) {
-				return { kind: "cancelled" as const };
-			}
-
-			// 不做探测：Codex 只懂 Responses API，而模型列表已经声明了网关通过
-			// 它提供哪些模型（映射是怎么来的见 `hardcodedModels.ts`）。
-			const proxyActive = isProxyActive();
-			const usable = proxyActive
-				? models.filter((model) => model.supported)
-				: [];
-			const excluded = models.length - usable.length;
-			if (usable.length === 0) {
-				return { kind: "none" as const, counted: excluded };
-			}
-			logger.info("catalog.sync.selected", {
-				usable: usable.map((model) => model.id).join(","),
-				excluded: String(excluded),
-			});
-
-			progress.report({ message: l10n("Building the Codex model catalog…") });
-			const lookup = await resolveTemplate(candidates);
-			if (!lookup.template || !lookup.executable) {
-				return {
-					kind: "error" as const,
-					message: l10nFormat(
-						"Could not read the Codex model catalog template (`codex debug models`). {0}",
-						lookup.error ?? candidates[0],
-					),
-				};
-			}
-			const { template, executable } = lookup;
-
-			const catalogText = serializeCatalog(buildCatalogEntries(usable, template));
-			const previousCatalog = await readCatalogFile(catalogPath);
-			const previousConfig = await readConfigText(location);
-			await writeCatalogFile(catalogPath, catalogText);
-
-			const current = await readCurrent();
-			const modelId = usable.some((model) => model.id === current.modelId)
-				? (current.modelId as string)
-				: usable[0].id;
-			if (!proxyAuth) {
-				return {
-					kind: "error" as const,
-					message: l10n("The OpenCode Go local proxy is unavailable. Set the API key and reload VS Code."),
-				};
-			}
-			const result = await applySelection({
-				modelId,
-				wireApi: "responses",
-				bearerToken: proxyAuth.bearerToken,
-				catalogFileName: CATALOG_FILE_NAME,
-				baseUrl: proxyAuth.baseUrl,
-			});
-			const health = await checkConfigLoads(executable, location.home);
-			if (!health.ok) {
-				logger.error("catalog.sync.rollback", { detail: health.detail ?? "" });
-				await restoreCatalogFile(catalogPath, previousCatalog);
-				if (previousConfig !== undefined) {
-					await restoreConfigText(previousConfig, location);
-				}
-				return { kind: "rollback" as const, detail: health.detail ?? "" };
-			}
-
-			logger.info("catalog.sync.done", {
-				catalog: catalogPath,
-				usable: usable.map((model) => model.id).join(","),
-				excluded: String(excluded),
-			});
-			return {
-				kind: "ok" as const,
-				count: usable.length,
-				excluded,
-				configPath: result.configPath,
-				changed: result.changed,
-			};
+			return await performCatalogSync(
+				ctx,
+				candidates,
+				location,
+				proxyAuth,
+				token,
+				progress,
+			);
 		},
 	);
 
@@ -222,6 +163,241 @@ export async function syncModelCatalogCommand(ctx: CatalogSyncContext): Promise<
 				l10nFormat("Failed to sync the model catalog: {0}", outcome.message),
 			);
 			return;
+	}
+}
+
+async function performCatalogSync(
+	ctx: CatalogSyncContext,
+	candidates: readonly string[],
+	location: ReturnType<typeof getConfigLocation>,
+	proxyAuth: Awaited<ReturnType<typeof getProxyProviderAuth>>,
+	token: vscode.CancellationToken,
+	progress?: vscode.Progress<{ message?: string; increment?: number }>,
+): Promise<CatalogSyncOutcome> {
+	progress?.report({ message: l10n("Fetching the model list…") });
+	let models;
+	try {
+		models = await prepareModelList(
+			{ force: true },
+			token,
+			ctx.secrets,
+			ctx.globalState,
+		);
+	} catch (error) {
+		return {
+			kind: "error",
+			message: describeModelFetchError(error),
+		};
+	}
+	if (models.length === 0) {
+		return {
+			kind: "error",
+			message: l10n("OpenCode Go returned no models."),
+		};
+	}
+	if (token.isCancellationRequested) {
+		return { kind: "cancelled" };
+	}
+
+	const proxyActive = isProxyActive();
+	const usable = proxyActive
+		? models.filter((model) => model.supported)
+		: [];
+	const excluded = models.length - usable.length;
+	if (usable.length === 0) {
+		return { kind: "none", counted: excluded };
+	}
+	logger.info("catalog.sync.selected", {
+		usable: usable.map((model) => model.id).join(","),
+		excluded: String(excluded),
+	});
+
+	progress?.report({ message: l10n("Building the Codex model catalog…") });
+	const lookup = await resolveTemplate(candidates);
+	if (!lookup.template || !lookup.executable) {
+		return {
+			kind: "error",
+			message: l10nFormat(
+				"Could not read the Codex model catalog template (`codex debug models`). {0}",
+				lookup.error ?? candidates[0],
+			),
+		};
+	}
+	const { template, executable } = lookup;
+	if (!proxyAuth) {
+		return {
+			kind: "error",
+			message: l10n(
+				"The OpenCode Go local proxy is unavailable. Set the API key and reload VS Code.",
+			),
+		};
+	}
+
+	const catalogPath = catalogPathFor(location.home);
+	const catalogText = serializeCatalog(
+		buildCatalogEntries(usable, template),
+	);
+	const previousCatalog = await readCatalogFile(catalogPath);
+	const previousConfig = await readConfigText(location);
+	try {
+		const catalogChanged = await writeCatalogFile(
+			catalogPath,
+			catalogText,
+		);
+		const current = await readCurrent();
+		const modelId = usable.some((model) => model.id === current.modelId)
+			? (current.modelId as string)
+			: usable[0].id;
+		const result = await applySelection({
+			modelId,
+			wireApi: "responses",
+			bearerToken: proxyAuth.bearerToken,
+			catalogFileName: CATALOG_FILE_NAME,
+			baseUrl: proxyAuth.baseUrl,
+		});
+		const health = await checkConfigLoads(executable, location.home);
+		if (!health.ok) {
+			logger.error("catalog.sync.rollback", {
+				detail: health.detail ?? "",
+			});
+			await restoreCatalogFile(catalogPath, previousCatalog);
+			if (previousConfig !== undefined) {
+				await restoreConfigText(previousConfig, location);
+			}
+			return { kind: "rollback", detail: health.detail ?? "" };
+		}
+
+		logger.info("catalog.sync.done", {
+			catalog: catalogPath,
+			usable: usable.map((model) => model.id).join(","),
+			excluded: String(excluded),
+		});
+		return {
+			kind: "ok",
+			count: usable.length,
+			excluded,
+			configPath: result.configPath,
+			changed: result.changed,
+			catalogChanged,
+		};
+	} catch (error) {
+		logger.error("catalog.sync.writeFailed", {
+			error: error instanceof Error ? error.message : String(error),
+		});
+		await restoreCatalogFile(catalogPath, previousCatalog);
+		if (previousConfig !== undefined) {
+			await restoreConfigText(previousConfig, location);
+		}
+		return {
+			kind: "error",
+			message:
+				error instanceof Error ? error.message : String(error),
+		};
+	}
+}
+
+export async function autoSyncModelCatalogForNewModels(
+	ctx: CatalogSyncContext,
+): Promise<CatalogAutoSyncResult> {
+	try {
+		const location = getConfigLocation();
+		const configText = await readConfigText(location);
+		const catalogReference =
+			configText === undefined
+				? undefined
+				: extractTopLevelValue(configText, "model_catalog_json");
+		if (
+			!catalogReference ||
+			path.basename(catalogReference) !== CATALOG_FILE_NAME
+		) {
+			return {
+				status: "skipped",
+				detail:
+					"Codex is not using the catalog generated by this extension.",
+			};
+		}
+		const catalogPath = catalogPathFor(location.home);
+		if ((await readCatalogFile(catalogPath)) === undefined) {
+			return {
+				status: "skipped",
+				detail: "The generated Codex catalog file no longer exists.",
+			};
+		}
+		const keyInfo = await resolveApiKey(ctx.secrets);
+		if (!keyInfo.key) {
+			return { status: "skipped", detail: "No API key is configured." };
+		}
+		if (!isProxyActive()) {
+			return {
+				status: "skipped",
+				detail:
+					"The local proxy is not active in this VS Code window.",
+			};
+		}
+		const proxyAuth = await getProxyProviderAuth(ctx.secrets);
+		if (!proxyAuth) {
+			return {
+				status: "skipped",
+				detail: "The local proxy is not ready.",
+			};
+		}
+		const candidates = findCodexExecutables(getCodexExecutableSetting());
+		if (candidates.length === 0) {
+			return {
+				status: "skipped",
+				detail: "Codex executable was not found.",
+			};
+		}
+		const cancellation = new vscode.CancellationTokenSource();
+		try {
+			const outcome = await performCatalogSync(
+				ctx,
+				candidates,
+				location,
+				proxyAuth,
+				cancellation.token,
+			);
+			switch (outcome.kind) {
+				case "ok":
+					if (!outcome.catalogChanged && !outcome.changed) {
+						return {
+							status: "skipped",
+							detail:
+								"The generated Codex catalog is already up to date.",
+						};
+					}
+					return {
+						status: "synced",
+						count: outcome.count,
+					};
+				case "none":
+					return {
+						status: "skipped",
+						detail: "No catalog models are usable.",
+					};
+				case "cancelled":
+					return {
+						status: "skipped",
+						detail: "Catalog sync was cancelled.",
+					};
+				case "rollback":
+					return {
+						status: "failed",
+						detail:
+							outcome.detail ||
+							"Codex rejected the generated catalog.",
+					};
+				case "error":
+					return { status: "failed", detail: outcome.message };
+			}
+		} finally {
+			cancellation.dispose();
+		}
+	} catch (error) {
+		return {
+			status: "failed",
+			detail: error instanceof Error ? error.message : String(error),
+		};
 	}
 }
 

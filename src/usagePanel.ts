@@ -194,6 +194,9 @@ async function openUsageDashboard(
 			case "syncModels":
 				await vscode.commands.executeCommand("codexgo.syncModelCatalog");
 				return;
+			case "openModelCenter":
+				await vscode.commands.executeCommand("codexgo.openModelCenter");
+				return;
 			case "removeCatalog":
 				await vscode.commands.executeCommand("codexgo.removeModelCatalog");
 				return;
@@ -321,6 +324,7 @@ function usageLabels(): Record<string, string> {
 		balanceFallback: l10n("After the Go quota runs out, usage falls back to your balance."),
 		refreshQuota: l10n("Refresh quota"),
 		refreshNow: l10n("Refresh now"),
+		modelCenter: l10n("Models & pricing"),
 		setApiKey: l10n("Set API key"),
 		getApiKey: l10n("Get API key"),
 		syncModels: l10n("Sync models"),

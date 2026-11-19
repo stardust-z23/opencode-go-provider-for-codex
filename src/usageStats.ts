@@ -15,6 +15,7 @@ export interface UsageRecord {
 	sessionId?: string;
 	requestId?: string;
 	previousResponseId?: string;
+	billingSource?: string;
 	inputTokens: number;
 	freshInputTokens: number;
 	cacheReadTokens: number;
@@ -166,6 +167,7 @@ export function createUsageRecord(
 		sessionId: optionalString(source.sessionId),
 		requestId: optionalString(source.clientRequestId) ?? optionalString(source.requestId),
 		previousResponseId: optionalString(source.previousResponseId),
+		billingSource: optionalString(source.billingSource),
 		inputTokens,
 		freshInputTokens,
 		cacheReadTokens,
@@ -209,6 +211,7 @@ export function parseUsageRecord(value: unknown): UsageRecord | undefined {
 		sessionId: optionalString(record.sessionId),
 		requestId: optionalString(record.requestId),
 		previousResponseId: optionalString(record.previousResponseId),
+		billingSource: optionalString(record.billingSource),
 		inputTokens,
 		freshInputTokens,
 		cacheReadTokens,
