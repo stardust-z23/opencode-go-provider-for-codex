@@ -280,6 +280,12 @@ main {
 	font-variant-numeric: tabular-nums;
 }
 
+.quota-value strong {
+	display: inline-block;
+	min-width: 2.6em;
+	text-align: right;
+}
+
 .quota-reset {
 	color: var(--vscode-descriptionForeground);
 	font-size: 10px;
@@ -653,8 +659,21 @@ tbody tr:nth-child(even):hover {
 
 @media (max-width: 900px) {
 	.quota-rows {
-		grid-template-columns: 1fr;
-		gap: 2px;
+		grid-template-columns:
+			max-content minmax(120px, 1fr) max-content max-content;
+		gap: 8px;
+	}
+
+	.quota-row,
+	.quota-value {
+		display: contents;
+	}
+
+	.quota-label,
+	.quota-track,
+	.quota-value strong,
+	.quota-reset {
+		align-self: center;
 	}
 
 	.submetric-strip {
@@ -759,9 +778,10 @@ tbody tr:nth-child(even):hover {
 		margin-bottom: 10px;
 	}
 
-	.quota-row {
-		grid-template-columns: auto minmax(64px, 1fr) max-content;
-		gap: 6px;
+	.quota-rows {
+		grid-template-columns:
+			max-content minmax(64px, 1fr) max-content max-content;
+		gap: 8px 6px;
 	}
 
 	.trend-heading {
