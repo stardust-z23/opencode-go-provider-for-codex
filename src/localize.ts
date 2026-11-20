@@ -270,7 +270,7 @@ const zhCN: Record<string, string> = {
 	"Remove generated model catalog": "移除生成的模型目录",
 	"Open settings": "打开设置",
 	"Reload window": "重新加载窗口",
-	"Cache(20): {0}": "缓存20：{0}",
+	"Cache hit rate (latest 20): {0}": "缓存命中率(最近20条)：{0}",
 	"OpenCode Go local proxy": "OpenCode Go 本地代理",
 	"Proxy: {0}": "代理：{0}",
 	"on": "开启",

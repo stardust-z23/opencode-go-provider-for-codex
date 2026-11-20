@@ -232,6 +232,28 @@ Codex 的模型选择器会用内部可见档位列表过滤目录，默认不�
 - 该 token 是对上游密钥做 HMAC-SHA256 派生得到的低价值凭据，只对回环代理有效。
 - 旧安装中的 `OPENCODE_GO_API_KEY` 环境变量只作为一次性迁移来源，发现后会复制到 SecretStorage。
 
+## 编译、打包与安装
+
+在仓库根目录执行：
+
+```powershell
+npm install
+npm run compile
+npm test
+npm run build
+```
+
+`npm run compile` 只把 TypeScript 输出到 `out/`；`npm run build` 会再次编译并生成仓库根目录的 `extension.vsix`。安装当前本地构建并确认版本：
+
+```powershell
+code --install-extension .\extension.vsix --force
+code --list-extensions --show-versions
+```
+
+macOS 或 Linux 将路径改为 `./extension.vsix`。终端找不到 `code` 时，先在 VS Code 命令面板执行 **Shell Command: Install 'code' command in PATH**。
+
+扩展宿主不会在 VSIX 安装后自动热替换。安装完成后执行 **Developer: Reload Window** 或重启 VS Code；每个需要使用的 VS Code Profile 都要单独安装。开发调试也可以直接按 `F5` 启动 Extension Development Host，不安装 VSIX。
+
 ## 测试
 
 | 命令 | 覆盖范围 |
