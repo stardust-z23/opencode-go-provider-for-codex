@@ -709,7 +709,10 @@ test("chat proxy maps visible xhigh back to upstream max", async () => {
 		const chunks = [];
 		req.on("data", (chunk) => chunks.push(chunk));
 		req.on("end", () => {
-			seen.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+			seen.push({
+				headers: req.headers,
+				body: JSON.parse(Buffer.concat(chunks).toString("utf8")),
+			});
 			res.writeHead(200, { "content-type": "application/json" });
 			res.end(
 				JSON.stringify({
@@ -731,7 +734,11 @@ test("chat proxy maps visible xhigh back to upstream max", async () => {
 	try {
 		const response = await fetch(`${proxy.baseUrl}/responses`, {
 			method: "POST",
-			headers: { authorization: "Bearer test-key", "content-type": "application/json" },
+			headers: {
+				authorization: "Bearer test-key",
+				"content-type": "application/json",
+				"session-id": "gemini-session",
+			},
 			body: JSON.stringify({
 				model: "deepseek-v4.1-flash",
 				stream: false,
@@ -740,7 +747,9 @@ test("chat proxy maps visible xhigh back to upstream max", async () => {
 			}),
 		});
 		assert.equal(response.status, 200);
-		assert.equal(seen[0].reasoning_effort, "max");
+		assert.equal(seen[0].body.reasoning_effort, "max");
+		assert.equal(seen[0].headers["session-id"], "gemini-session");
+		assert.equal(seen[0].headers["x-opencode-session"], "gemini-session");
 	} finally {
 		await proxy.close();
 		await close(upstream);

@@ -2299,6 +2299,13 @@ function buildUpstreamHeaders(
 			result[name] = value;
 		}
 	}
+	const opencodeSession =
+		headerValue(headers["x-opencode-session"]) ??
+		headerValue(headers["session-id"]) ??
+		headerValue(headers["thread-id"]);
+	if (opencodeSession) {
+		result["x-opencode-session"] = opencodeSession;
+	}
 	for (const [name, value] of Object.entries(headers)) {
 		const lower = name.toLowerCase();
 		if (!(lower.startsWith("x-codex-") || lower.startsWith("x-opencode-")) || !value) {

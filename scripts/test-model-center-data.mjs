@@ -229,6 +229,165 @@ test("builds deterministic model changes with stable categories", () => {
 	);
 });
 
+test("does not report unchanged capabilities when only the API catalog changes", () => {
+	const capabilitySnapshot = {
+		tools: { supported: true },
+		reasoning: {
+			supported: true,
+			effort: ["low", "medium", "high"],
+		},
+		cache: { implicit: true },
+		structured_output: true,
+	};
+	const generateContent = {
+		base_url: "https://opencode.ai/inference/go/google/v1beta",
+		sdk: {
+			opencodeai: "@opencode/ai/providers/google",
+		},
+	};
+	const interactions = {
+		base_url: "https://opencode.ai/inference/go/google/v1beta",
+		sdk: {
+			opencodeai: "@opencode/ai/providers/google/interactions",
+		},
+	};
+	const previous = data.normalizeModelCatalog(
+		{
+			data: [
+				model({
+					id: "gemini-4-argon",
+					name: "Gemini 4 Argon",
+					recommended_api: "generate-content",
+					capabilities: capabilitySnapshot,
+					api: { "generate-content": generateContent },
+				}),
+			],
+		},
+		Date.parse("2026-11-20T01:00:00.000Z"),
+	);
+	const next = data.normalizeModelCatalog(
+		{
+			data: [
+				model({
+					id: "gemini-4-argon",
+					name: "Gemini 4 Argon",
+					recommended_api: "interactions",
+					capabilities: capabilitySnapshot,
+					api: {
+						"generate-content": generateContent,
+						interactions,
+					},
+				}),
+			],
+		},
+		Date.parse("2026-11-20T02:00:00.000Z"),
+	);
+	const changes = data.diffModelCatalogs(
+		previous,
+		next,
+		Date.parse("2026-11-20T02:00:00.000Z"),
+	);
+	assert.equal(changes.length, 1);
+	assert.deepEqual(
+		changes[0].details.map((detail) => detail.path),
+		["recommendedApi", "api"],
+	);
+	assert.deepEqual(
+		data.summarizeModelChange(changes[0]).map((summary) => summary.template),
+		[
+			"Recommended API changed from {0} to {1}.",
+			"Added the {0} API adapter.",
+			"Existing {0} API adapter remains available.",
+		],
+	);
+});
+
+test("summarizes historical API changes without repeating unchanged snapshots", () => {
+	const capabilities = {
+		tools: { supported: true },
+		reasoning: {
+			supported: true,
+			effort: ["low", "medium", "high"],
+		},
+	};
+	const summaries = data.summarizeModelChange({
+		...change("historical", 1_000, "gemini-4-argon", "metadata"),
+		details: [
+			{
+				path: "recommendedApi",
+				oldValue: "generate-content",
+				newValue: "interactions",
+			},
+			{
+				path: "capabilities",
+				oldValue: capabilities,
+				newValue: capabilities,
+			},
+			{
+				path: "api",
+				oldValue: {
+					"generate-content": { base_url: "google" },
+				},
+				newValue: {
+					"generate-content": { base_url: "google" },
+					interactions: { base_url: "google" },
+				},
+			},
+		],
+	});
+	assert.deepEqual(
+		summaries.map((summary) => summary.template),
+		[
+			"Recommended API changed from {0} to {1}.",
+			"Model capabilities are unchanged.",
+			"Added the {0} API adapter.",
+			"Existing {0} API adapter remains available.",
+		],
+	);
+});
+
+test("summarizes limit and pricing changes in user-facing terms", () => {
+	const limits = data.summarizeModelChange({
+		...change("limits", 1_000, "grok-4.7", "limits"),
+		details: [
+			{
+				path: "contextLimit",
+				oldValue: 500_000,
+				newValue: 1_000_000,
+			},
+		],
+	});
+	assert.equal(
+		limits[0].template,
+		"Context window changed from {0} to {1} tokens.",
+	);
+
+	const pricing = data.summarizeModelChange({
+		...change("pricing", 2_000, "grok-4.7", "pricing"),
+		details: [
+			{
+				path: "cost",
+				oldValue: {
+					text: {
+						input: { price: 2 },
+						output: { price: 6 },
+					},
+				},
+				newValue: {
+					text: {
+						input: { price: 3 },
+						output: { price: 6 },
+					},
+				},
+			},
+		],
+	});
+	assert.deepEqual(
+		pricing.map((summary) => summary.template),
+		["Input token price changed from {0} to {1} USD per 1M tokens."],
+	);
+});
+
 test("removes legacy hydration batches without deleting normal changes", () => {
 	const changes = [];
 	for (let index = 0; index < 12; index++) {

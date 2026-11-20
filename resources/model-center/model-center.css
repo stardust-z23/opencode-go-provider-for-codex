@@ -829,6 +829,38 @@ tbody tr:nth-child(even):hover {
 	font-size: 10px;
 }
 
+.change-summary-list {
+	display: grid;
+	gap: 4px;
+	margin: 8px 0 0;
+	padding-left: 18px;
+	color: var(--vscode-foreground);
+	font-size: 11px;
+	line-height: 1.4;
+}
+
+.change-summary-list li::marker {
+	color: var(--vscode-descriptionForeground);
+}
+
+.raw-change-details {
+	margin-top: 7px;
+	color: var(--vscode-descriptionForeground);
+	font-size: 10px;
+}
+
+.raw-change-details > summary {
+	width: max-content;
+	cursor: pointer;
+	color: var(--vscode-textLink-foreground);
+}
+
+.raw-change-details > summary:hover,
+.raw-change-details > summary:focus-visible {
+	text-decoration: underline;
+	outline: none;
+}
+
 .detail-change {
 	display: flex;
 	flex-wrap: wrap;

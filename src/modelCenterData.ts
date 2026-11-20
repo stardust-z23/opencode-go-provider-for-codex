@@ -62,6 +62,11 @@ export interface ModelChange {
 	details: ModelChangeDetail[];
 }
 
+export interface ModelChangeSummary {
+	template: string;
+	values: unknown[];
+}
+
 export interface OfficialNewsItem {
 	guid: string;
 	title: string;
@@ -460,24 +465,25 @@ export function diffModelCatalogs(
 			}
 		}
 		if (
-			(old.capabilities !== undefined &&
-				stableStringify(old.capabilities) !==
-					stableStringify(model.capabilities)) ||
-			(old.api !== undefined &&
-				stableStringify(old.api) !== stableStringify(model.api))
+			old.capabilities !== undefined &&
+			stableStringify(old.capabilities) !==
+				stableStringify(model.capabilities)
 		) {
-			metadataDetails.push(
-				{
-					path: "capabilities",
-					oldValue: old.capabilities,
-					newValue: model.capabilities,
-				},
-				{
-					path: "api",
-					oldValue: old.api,
-					newValue: model.api,
-				},
-			);
+			metadataDetails.push({
+				path: "capabilities",
+				oldValue: old.capabilities,
+				newValue: model.capabilities,
+			});
+		}
+		if (
+			old.api !== undefined &&
+			stableStringify(old.api) !== stableStringify(model.api)
+		) {
+			metadataDetails.push({
+				path: "api",
+				oldValue: old.api,
+				newValue: model.api,
+			});
 		}
 		if (
 			stableStringify(old.inputModalities) !==
@@ -516,6 +522,463 @@ export function diffModelCatalogs(
 	}
 
 	return changes;
+}
+
+export function summarizeModelChange(change: ModelChange): ModelChangeSummary[] {
+	const summaries: ModelChangeSummary[] = [];
+	const add = (
+		template: string,
+		...values: unknown[]
+	): void => {
+		summaries.push({ template, values });
+	};
+
+	if (change.kind === "added") {
+		add("Added to the OpenCode Go catalog.");
+	} else if (change.kind === "removed") {
+		add("Removed from the OpenCode Go catalog.");
+	}
+
+	const detailsByPath = new Map(
+		change.details.map((detail) => [detail.path, detail]),
+	);
+	if (change.kind === "monthly_usage") {
+		for (const detail of change.details) {
+			const [field, plan] = detail.path.split(".");
+			const planLabel = planSummaryLabel(plan);
+			if (field === "monthlyUsage") {
+				if (detail.oldValue === null && typeof detail.newValue === "number") {
+					add(
+						"Monthly allowance for {0} is now {1}.",
+						planLabel,
+						detail.newValue,
+					);
+				} else if (
+					typeof detail.oldValue === "number" &&
+					detail.newValue === null
+				) {
+					add("The {0} monthly allowance was removed.", planLabel);
+				} else {
+					add(
+						"{0} monthly allowance changed from {1} to {2}.",
+						planLabel,
+						detail.oldValue,
+						detail.newValue,
+					);
+				}
+			} else if (field === "requestsPerFiveHours") {
+				add(
+					"{0} request limit changed from {1} to {2} per five hours.",
+					planLabel,
+					detail.oldValue,
+					detail.newValue,
+				);
+			}
+		}
+	}
+
+	if (change.kind === "pricing") {
+		const detail = detailsByPath.get("cost");
+		if (detail) {
+			summarizeCostChange(detail, add);
+		}
+	}
+
+	if (change.kind === "limits") {
+		const context = detailsByPath.get("contextLimit");
+		if (context) {
+			add(
+				"Context window changed from {0} to {1} tokens.",
+				context.oldValue,
+				context.newValue,
+			);
+		}
+		const output = detailsByPath.get("outputLimit");
+		if (output) {
+			add(
+				"Maximum output changed from {0} to {1} tokens.",
+				output.oldValue,
+				output.newValue,
+			);
+		}
+	}
+
+	if (change.kind === "availability") {
+		for (const detail of change.details) {
+			const oldEnabled = detail.oldValue === true;
+			const newEnabled = detail.newValue === true;
+			switch (detail.path) {
+				case "training":
+					add(
+						"Training-data use changed from {0} to {1}.",
+						oldEnabled ? "allowed" : "not allowed",
+						newEnabled ? "allowed" : "not allowed",
+					);
+					break;
+				case "zdr":
+					add(
+						"Zero data retention changed from {0} to {1}.",
+						oldEnabled ? "enabled" : "disabled",
+						newEnabled ? "enabled" : "disabled",
+					);
+					break;
+				case "limitedRegions":
+					add(
+						"Regional restrictions changed from {0} to {1}.",
+						oldEnabled ? "enabled" : "disabled",
+						newEnabled ? "enabled" : "disabled",
+					);
+					break;
+				case "limitedTime":
+					add(
+						"Limited-time availability changed from {0} to {1}.",
+						oldEnabled ? "enabled" : "disabled",
+						newEnabled ? "enabled" : "disabled",
+					);
+					break;
+				case "featured":
+					add(
+						"Featured status changed from {0} to {1}.",
+						oldEnabled ? "enabled" : "disabled",
+						newEnabled ? "enabled" : "disabled",
+					);
+					break;
+				case "deprecated":
+					add(
+						newEnabled
+							? "The model was marked as deprecated."
+							: "The model is no longer marked as deprecated.",
+					);
+					break;
+			}
+		}
+	}
+
+	if (change.kind === "metadata") {
+		const name = detailsByPath.get("name");
+		if (name) {
+			add(
+				"Model name changed from {0} to {1}.",
+				name.oldValue,
+				name.newValue,
+			);
+		}
+		const description = detailsByPath.get("description");
+		if (description) {
+			add("Model description updated.");
+		}
+		const lastUpdated = detailsByPath.get("lastUpdated");
+		if (lastUpdated) {
+			add(
+				"Last-updated date changed from {0} to {1}.",
+				lastUpdated.oldValue,
+				lastUpdated.newValue,
+			);
+		}
+		const releaseDate = detailsByPath.get("releaseDate");
+		if (releaseDate) {
+			add(
+				"Release date changed from {0} to {1}.",
+				releaseDate.oldValue,
+				releaseDate.newValue,
+			);
+		}
+		const recommendedApi = detailsByPath.get("recommendedApi");
+		if (recommendedApi) {
+			add(
+				"Recommended API changed from {0} to {1}.",
+				apiSummaryLabel(recommendedApi.oldValue),
+				apiSummaryLabel(recommendedApi.newValue),
+			);
+		}
+		const capabilities = detailsByPath.get("capabilities");
+		if (capabilities) {
+			if (
+				stableStringify(capabilities.oldValue) ===
+				stableStringify(capabilities.newValue)
+			) {
+				add("Model capabilities are unchanged.");
+			} else {
+				summarizeCapabilities(capabilities, add);
+			}
+		}
+		const api = detailsByPath.get("api");
+		if (api) {
+			summarizeApiChange(api, add);
+		}
+		summarizeModalities(
+			detailsByPath.get("inputModalities"),
+			"input",
+			add,
+		);
+		summarizeModalities(
+			detailsByPath.get("outputModalities"),
+			"output",
+			add,
+		);
+		for (const path of ["canonicalId", "family", "ownedBy", "openWeights"]) {
+			const detail = detailsByPath.get(path);
+			if (detail) {
+				add("Model catalog metadata was updated.");
+				break;
+			}
+		}
+		if (summaries.length === 0 && change.details.length > 0) {
+			add("Model metadata changed.");
+		}
+	}
+
+	const seen = new Set<string>();
+	return summaries.filter((entry) => {
+		const key = `${entry.template}\u0000${JSON.stringify(entry.values)}`;
+		if (seen.has(key)) {
+			return false;
+		}
+		seen.add(key);
+		return true;
+	}).slice(0, 8);
+}
+
+function planSummaryLabel(plan: string | undefined): string {
+	if (plan === "go") {
+		return "Go";
+	}
+	if (plan === "go-plus") {
+		return "Go Plus";
+	}
+	if (plan === "go-teams") {
+		return "Go Teams";
+	}
+	return plan ?? "Plan";
+}
+
+type AddSummary = (
+	template: string,
+	...values: unknown[]
+) => void;
+
+function summarizeCostChange(detail: ModelChangeDetail, add: AddSummary): void {
+	const oldCost = isRecord(detail.oldValue) ? detail.oldValue : {};
+	const newCost = isRecord(detail.newValue) ? detail.newValue : {};
+	let addedSpecificSummary = false;
+	const addSpecific: AddSummary = (template, ...values) => {
+		addedSpecificSummary = true;
+		add(template, ...values);
+	};
+	const changed = (path: string): boolean =>
+		stableStringify(valueAtPath(oldCost, path)) !==
+		stableStringify(valueAtPath(newCost, path));
+	const addPrice = (
+		path: string,
+		template: string,
+	): void => {
+		if (!changed(path)) {
+			return;
+		}
+		addSpecific(
+			template,
+			valueAtPath(oldCost, path),
+			valueAtPath(newCost, path),
+		);
+	};
+
+	addPrice(
+		"text.input.price",
+		"Input token price changed from {0} to {1} USD per 1M tokens.",
+	);
+	addPrice(
+		"text.input.cache.read",
+		"Cache-read price changed from {0} to {1} USD per 1M tokens.",
+	);
+	addPrice(
+		"text.input.cache.write",
+		"Cache-write price changed from {0} to {1}.",
+	);
+	addPrice(
+		"text.output.price",
+		"Output token price changed from {0} to {1} USD per 1M tokens.",
+	);
+	addPrice(
+		"audio.input.price",
+		"Audio input price changed from {0} to {1}.",
+	);
+	if (changed("text.input.overrides")) {
+		addSpecific("Context-tier input pricing changed.");
+	}
+	if (changed("text.output.overrides")) {
+		addSpecific("Context-tier output pricing changed.");
+	}
+	if (changed("multipliers")) {
+		addSpecific("Time-based pricing multipliers changed.");
+	}
+	if (
+		!addedSpecificSummary &&
+		stableStringify(oldCost) !== stableStringify(newCost)
+	) {
+		add("Pricing rules changed.");
+	}
+}
+
+function valueAtPath(root: Record<string, unknown>, path: string): unknown {
+	let current: unknown = root;
+	for (const segment of path.split(".")) {
+		if (!isRecord(current)) {
+			return undefined;
+		}
+		current = current[segment];
+	}
+	return current;
+}
+
+function summarizeCapabilities(
+	detail: ModelChangeDetail,
+	add: AddSummary,
+): void {
+	const oldCapabilities = isRecord(detail.oldValue)
+		? detail.oldValue
+		: {};
+	const newCapabilities = isRecord(detail.newValue)
+		? detail.newValue
+		: {};
+	const changed = (path: string): boolean =>
+		stableStringify(valueAtPath(oldCapabilities, path)) !==
+		stableStringify(valueAtPath(newCapabilities, path));
+
+	if (changed("tools.supported")) {
+		add(
+			"Tool-use support changed from {0} to {1}.",
+			valueAtPath(oldCapabilities, "tools.supported"),
+			valueAtPath(newCapabilities, "tools.supported"),
+		);
+	}
+	if (changed("reasoning.supported")) {
+		add(
+			"Reasoning support changed from {0} to {1}.",
+			valueAtPath(oldCapabilities, "reasoning.supported"),
+			valueAtPath(newCapabilities, "reasoning.supported"),
+		);
+	}
+	if (changed("reasoning.effort")) {
+		add(
+			"Reasoning effort levels changed from {0} to {1}.",
+			summaryList(valueAtPath(oldCapabilities, "reasoning.effort")),
+			summaryList(valueAtPath(newCapabilities, "reasoning.effort")),
+		);
+	}
+	if (changed("cache.implicit")) {
+		add(
+			"Implicit prompt caching changed from {0} to {1}.",
+			valueAtPath(oldCapabilities, "cache.implicit"),
+			valueAtPath(newCapabilities, "cache.implicit"),
+		);
+	}
+	if (changed("structured_output")) {
+		add(
+			"Structured-output support changed from {0} to {1}.",
+			valueAtPath(oldCapabilities, "structured_output"),
+			valueAtPath(newCapabilities, "structured_output"),
+		);
+	}
+	if (!changed("tools.supported") &&
+		!changed("reasoning.supported") &&
+		!changed("reasoning.effort") &&
+		!changed("cache.implicit") &&
+		!changed("structured_output")) {
+		add("Model capability settings changed.");
+	}
+}
+
+function summarizeApiChange(
+	detail: ModelChangeDetail,
+	add: AddSummary,
+): void {
+	const oldApi = isRecord(detail.oldValue) ? detail.oldValue : {};
+	const newApi = isRecord(detail.newValue) ? detail.newValue : {};
+	const oldKeys = Object.keys(oldApi);
+	const newKeys = Object.keys(newApi);
+	const added = newKeys.filter((key) => !oldKeys.includes(key));
+	const removed = oldKeys.filter((key) => !newKeys.includes(key));
+	const retained = oldKeys.filter((key) => newKeys.includes(key));
+
+	for (const key of added) {
+		add("Added the {0} API adapter.", apiSummaryLabel(key));
+	}
+	for (const key of removed) {
+		add("Removed the {0} API adapter.", apiSummaryLabel(key));
+	}
+	if (added.length > 0 || removed.length > 0) {
+		for (const key of retained) {
+			if (stableStringify(oldApi[key]) === stableStringify(newApi[key])) {
+				add("Existing {0} API adapter remains available.", apiSummaryLabel(key));
+			}
+		}
+	}
+	for (const key of retained) {
+		if (stableStringify(oldApi[key]) !== stableStringify(newApi[key])) {
+			add(
+				"Configuration changed for the {0} API adapter.",
+				apiSummaryLabel(key),
+			);
+		}
+	}
+}
+
+function summarizeModalities(
+	detail: ModelChangeDetail | undefined,
+	direction: "input" | "output",
+	add: AddSummary,
+): void {
+	if (!detail) {
+		return;
+	}
+	const oldValues = Array.isArray(detail.oldValue)
+		? detail.oldValue.filter(
+				(value): value is string => typeof value === "string",
+			)
+		: [];
+	const newValues = Array.isArray(detail.newValue)
+		? detail.newValue.filter(
+				(value): value is string => typeof value === "string",
+			)
+		: [];
+	const added = newValues.filter((value) => !oldValues.includes(value));
+	const removed = oldValues.filter((value) => !newValues.includes(value));
+	if (added.length > 0) {
+		add(
+			"Added supported {0} types: {1}.",
+			direction,
+			added.join(", "),
+		);
+	}
+	if (removed.length > 0) {
+		add(
+			"Removed supported {0} types: {1}.",
+			direction,
+			removed.join(", "),
+		);
+	}
+}
+
+function summaryList(value: unknown): string {
+	return Array.isArray(value)
+		? value.filter((item) => typeof item === "string").join(", ")
+		: String(value ?? "none");
+}
+
+function apiSummaryLabel(value: unknown): string {
+	if (typeof value !== "string" || !value) {
+		return "unknown";
+	}
+	const labels: Record<string, string> = {
+		responses: "Responses",
+		"chat-completions": "Chat Completions",
+		chat: "Chat Completions",
+		messages: "Messages",
+		"anthropic-messages": "Messages",
+		"generate-content": "Generate Content",
+		interactions: "Interactions",
+	};
+	return labels[value] ?? value;
 }
 
 export function removeLegacyHydrationChangeBatches(

@@ -646,8 +646,29 @@
 			heading,
 			element("div", "update-meta", `${change.modelName} · ${change.modelId}`),
 		);
+		const summaries = Array.isArray(change.summaries) ? change.summaries : [];
+		if (summaries.length > 0) {
+			const list = element("ul", "change-summary-list");
+			for (const summary of summaries) {
+				list.append(element("li", "", summary));
+			}
+			item.append(list);
+		}
+
+		const rawDetails = (change.details || []).filter(
+			(detail) => !sameValue(detail.oldValue, detail.newValue),
+		);
+		if (rawDetails.length === 0) {
+			return item;
+		}
+		const disclosure = document.createElement("details");
+		disclosure.className = "raw-change-details";
+		const disclosureLabel = document.createElement("summary");
+		disclosureLabel.textContent = formatTemplate(labels.rawChanges, [
+			number.format(rawDetails.length),
+		]);
 		const details = element("div", "update-details");
-		for (const detail of change.details || []) {
+		for (const detail of rawDetails) {
 			const line = element("div", "detail-change");
 			line.append(
 				element("code", "", detail.path),
@@ -661,7 +682,8 @@
 			);
 			details.append(line);
 		}
-		item.append(details);
+		disclosure.append(disclosureLabel, details);
+		item.append(disclosure);
 		return item;
 	}
 
@@ -747,6 +769,34 @@
 		} catch {
 			return String(value);
 		}
+	}
+
+	function sameValue(left, right) {
+		if (Object.is(left, right)) return true;
+		if (
+			typeof left !== "object" ||
+			left === null ||
+			typeof right !== "object" ||
+			right === null
+		) {
+			return false;
+		}
+		if (Array.isArray(left) || Array.isArray(right)) {
+			if (!Array.isArray(left) || !Array.isArray(right)) return false;
+			return (
+				left.length === right.length &&
+				left.every((value, index) => sameValue(value, right[index]))
+			);
+		}
+		const leftKeys = Object.keys(left).sort();
+		const rightKeys = Object.keys(right).sort();
+		return (
+			leftKeys.length === rightKeys.length &&
+			leftKeys.every(
+				(key, index) =>
+					key === rightKeys[index] && sameValue(left[key], right[key]),
+			)
+		);
 	}
 
 	function stripMarkup(value) {

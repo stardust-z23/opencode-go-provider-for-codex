@@ -1,7 +1,9 @@
 # 更新日志
 
-## Unreleased
+## 0.2.8 (2026-11-20)
 
+- **模型变更改为语义摘要。** 模型中心先提炼“推荐 API 切换、适配器新增或保留、能力是否变化”等结论，原始字段折叠显示；只有 API 对象变化时，不再把完全一致的能力快照误报为变化。
+- **修复 Gemini 4 Argon 会话头转发。** Chat Completions 与原生 Responses 代理会把 Codex 的 `session-id` / `thread-id` 同步为 OpenCode 新路由要求的 `x-opencode-session`；已实测 Gemini 4 Argon 的纯文本与工具调用均成功。
 - **补充使用统计口径文档。** 明确扩展统计与 OpenCode 后台账单的差异，取消或推理失败的请求可能因缺少最终 usage 而未被本地记录；记录 token 公式、reasoning 不重复计入、相同截止时间比较原则及日志对照脚本用法。
 
 ## 0.2.7 (2026-11-19)

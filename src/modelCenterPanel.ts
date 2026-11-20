@@ -8,6 +8,7 @@ import {
 	type GoPlan,
 	modelContextPriceTiers,
 	modelTimePriceRules,
+	summarizeModelChange,
 } from "./modelCenterData";
 import {
 	type ModelCenterService,
@@ -252,7 +253,40 @@ function viewData(snapshot: ModelCenterViewSnapshot): Record<string, unknown> {
 		models: snapshot.models.map((model) =>
 			modelRow(model),
 		),
+		changes: snapshot.changes.map((change) => ({
+			...change,
+			summaries: summarizeModelChange(change).map((summary) =>
+				l10nFormat(
+					summary.template,
+					...summary.values.map(formatChangeSummaryValue),
+				),
+			),
+		})),
 	};
+}
+
+function formatChangeSummaryValue(value: unknown): string {
+	if (value === null || value === undefined) {
+		return l10n("Not included");
+	}
+	if (typeof value === "number") {
+		return new Intl.NumberFormat(vscode.env.language).format(value);
+	}
+	if (typeof value === "boolean") {
+		return value ? l10n("enabled") : l10n("disabled");
+	}
+	if (typeof value === "string") {
+		return l10n(value);
+	}
+	try {
+		const text = JSON.stringify(value);
+		if (!text) {
+			return String(value);
+		}
+		return text.length > 160 ? `${text.slice(0, 157)}...` : text;
+	} catch {
+		return String(value);
+	}
 }
 
 function modelRow(model: GoModelInfo): ModelRow {
@@ -374,6 +408,7 @@ function modelCenterLabels(): Record<string, string> {
 		metadata: l10n("Metadata changed"),
 		oldValue: l10n("Before"),
 		newValue: l10n("After"),
+		rawChanges: l10n("Raw field changes ({0})"),
 		readOfficial: l10n("Read official announcement"),
 		lastModelFetch: l10n("Model data updated {0}"),
 		lastSyncSynced: l10n("Codex catalog auto-synced after new models appeared."),

@@ -138,6 +138,7 @@ DeepSeek 的别名规则定义在 `protocolVariants.ts`：
 - 请求必须来自回环地址。
 - `Authorization` Bearer 必须与从上游密钥派生出的本地代理 token 一致。
 - 转发到 OpenCode Go 时，代理用 SecretStorage 中的真实上游密钥重写 `Authorization`。
+- Codex 的 `session-id` / `thread-id` 会同步写为 `x-opencode-session`，满足 OpenCode 新路由对会话标识的要求；调用方已有的 `x-opencode-session` 优先。
 - 请求体上限为 32 MiB。
 - 非 `responses` 模型不支持远程压缩，`/responses/compact` 或 compaction trigger 返回 `501`；DeepSeek 的 Responses 别名也会被上游以 `404` 拒绝。
 
@@ -200,7 +201,7 @@ Codex 的模型选择器会用内部可见档位列表过滤目录，默认不�
 - 模型目录：`https://opencode.ai/inference/go/v1/models`
 - 官方动态：`https://opencode.ai/console/changelog/rss.xml`
 
-两者每小时刷新一次，RSS 使用 `ETag` / `Last-Modified` 条件请求。公开模型目录同时提供给模型同步与代理路由；模型中心首次成功拉取只建立基线，不发通知；之后模型新增、下线、月额度、价格、上下文限制、可用性、元数据变化和官方新条目会聚合为一条通知，并累计未读徽标。
+两者每小时刷新一次，RSS 使用 `ETag` / `Last-Modified` 条件请求。公开模型目录同时提供给模型同步与代理路由；模型中心首次成功拉取只建立基线，不发通知；之后模型新增、下线、月额度、价格、上下文限制、可用性、元数据变化和官方新条目会聚合为一条通知，并累计未读徽标。变更卡先按类型生成“推荐协议切换、适配器新增/移除/保留、价格、额度、限制、可用性”等语义摘要，原始字段只在折叠区展示；读取旧状态时也会重新提炼，无需清空历史。
 
 - 状态保存在 `<globalStorage>/model-center/state.json`，变更与消息保留 90 天。
 - 月额度固定并列展示 Go、Go Plus、Go Teams，不提供套餐切换，也不标记当前套餐。
