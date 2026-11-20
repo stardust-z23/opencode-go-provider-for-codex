@@ -203,60 +203,63 @@ test("cache drop detection requires a comparable same-session input", () => {
 	assert.equal(snapshot.summary.cacheDropCount, 1);
 });
 
-test("status summary follows the latest session", () => {
-	const summary = usage.getCacheStatusSummary(
-		[
+test("status summary uses the latest 20 records across sessions and models", () => {
+	const records = [
+		record({
+			id: "older-miss",
+			startedAt: 1_000,
+			freshInputTokens: 1_000,
+		}),
+		record({
+			id: "older-hit",
+			startedAt: 2_000,
+			cacheReadTokens: 1_000,
+		}),
+	];
+	for (let index = 0; index < 20; index++) {
+		records.push(
 			record({
-				id: "a",
-				startedAt: 1_000,
-				sessionId: "session-a",
-				freshInputTokens: 100,
-				cacheReadTokens: 900,
+				id: `recent-${index}`,
+				startedAt: 3_000 + index,
+				sessionId: `session-${index % 3}`,
+				model: index % 2 === 0 ? "deepseek-v4.1-flash" : "glm-5.3",
+				freshInputTokens: 10,
+				cacheReadTokens: 90,
 			}),
-			record({
-				id: "b",
-				startedAt: 2_000,
-				sessionId: "session-b",
-				model: "glm-5.3",
-				freshInputTokens: 200,
-				cacheReadTokens: 200,
-			}),
-		],
-		2_500,
-	);
-	assert.equal(summary.scope, "session");
-	assert.equal(summary.sessionId, "session-b");
-	assert.equal(summary.model, "glm-5.3");
-	assert.equal(summary.requests, 1);
-	assert.equal(summary.cacheHitRate, 0.5);
+		);
+	}
+	const summary = usage.getCacheStatusSummary(records, 4_000);
+	assert.equal(summary.scope, "recent20");
+	assert.equal(summary.requests, 20);
+	assert.equal(summary.cacheHitRate, 0.9);
 });
 
-test("status summary does not mix models in one session", () => {
+test("status summary ignores future records and uses all available recent rows", () => {
 	const summary = usage.getCacheStatusSummary(
 		[
 			record({
-				id: "model-a",
+				id: "failed",
 				startedAt: 1_000,
-				sessionId: "shared-session",
-				model: "deepseek-v4.1-flash",
-				freshInputTokens: 100,
-				cacheReadTokens: 900,
+				success: false,
+				statusCode: 500,
 			}),
 			record({
-				id: "model-b",
+				id: "successful",
 				startedAt: 2_000,
-				sessionId: "shared-session",
-				model: "glm-5.3",
-				freshInputTokens: 300,
+				freshInputTokens: 100,
 				cacheReadTokens: 300,
 			}),
+			record({
+				id: "future",
+				startedAt: 4_000,
+				freshInputTokens: 10_000,
+			}),
 		],
-		2_500,
+		3_000,
 	);
-	assert.equal(summary.scope, "session");
-	assert.equal(summary.model, "glm-5.3");
-	assert.equal(summary.requests, 1);
-	assert.equal(summary.cacheHitRate, 0.5);
+	assert.equal(summary.scope, "recent20");
+	assert.equal(summary.requests, 2);
+	assert.equal(summary.cacheHitRate, 0.75);
 });
 
 test("UsageStore persists and reloads compact JSONL records", async () => {

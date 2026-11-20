@@ -469,7 +469,7 @@ function currentCacheLabel(): string {
 	if (!cache || cache.requests === 0 || cache.cacheHitRate === null) {
 		return "";
 	}
-	return l10nFormat("Cache: {0}", formatPercent(cache.cacheHitRate * 100));
+	return l10nFormat("Cache(20): {0}", formatPercent(cache.cacheHitRate * 100));
 }
 
 function formatPercent(percent: number): string {

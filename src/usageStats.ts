@@ -74,9 +74,7 @@ export interface UsageDashboardSnapshot {
 }
 
 export interface CacheStatusSummary {
-	scope: "session" | "lastHour";
-	sessionId?: string;
-	model?: string;
+	scope: "recent20";
 	requests: number;
 	cacheHitRate: number | null;
 }
@@ -404,38 +402,20 @@ export function buildUsageSnapshot(
 	};
 }
 
-/**
- * Compact status-bar summary. Prefer the latest conversation; fall back to the
- * last hour when a client does not send a stable session header.
- */
+/** Compact status-bar summary for the latest 20 proxy request records. */
 export function getCacheStatusSummary(
 	records: UsageRecord[],
 	now = Date.now(),
 ): CacheStatusSummary {
 	const descending = [...records].sort((left, right) => right.startedAt - left.startedAt);
-	const latest = descending.find((record) => record.success);
-	const selected = latest?.sessionId
-		? descending.filter(
-				(record) =>
-					record.success &&
-					record.sessionId === latest.sessionId &&
-					record.model === latest.model &&
-					record.startedAt <= now,
-			)
-		: descending.filter(
-				(record) =>
-					record.success &&
-					record.model === latest?.model &&
-					record.startedAt >= now - HOUR_MS &&
-					record.startedAt <= now,
-			);
+	const selected = descending
+		.filter((record) => record.startedAt <= now)
+		.slice(0, 20);
 	const fresh = selected.reduce((sum, record) => sum + record.freshInputTokens, 0);
 	const read = selected.reduce((sum, record) => sum + record.cacheReadTokens, 0);
 	const write = selected.reduce((sum, record) => sum + record.cacheWriteTokens, 0);
 	return {
-		scope: latest?.sessionId ? "session" : "lastHour",
-		sessionId: latest?.sessionId,
-		model: latest?.model,
+		scope: "recent20",
 		requests: selected.length,
 		cacheHitRate: cacheHitRate(fresh, read, write),
 	};
