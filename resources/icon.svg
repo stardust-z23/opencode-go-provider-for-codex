@@ -1,19 +1,25 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
   <defs>
-    <linearGradient id="background" x1="20" y1="8" x2="108" y2="120" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#1c2a3f"/>
-      <stop offset="1" stop-color="#0d1523"/>
+    <linearGradient id="background" x1="18" y1="10" x2="110" y2="118" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22344b"/>
+      <stop offset="1" stop-color="#0b1320"/>
     </linearGradient>
-    <linearGradient id="bridge" x1="32" y1="82" x2="96" y2="46" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#37d5b6"/>
+    <linearGradient id="blossom" x1="42" y1="18" x2="88" y2="72" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7ee8c7"/>
+      <stop offset=".55" stop-color="#e9f5ff"/>
       <stop offset="1" stop-color="#f4a259"/>
     </linearGradient>
   </defs>
-  <rect width="128" height="128" rx="28" fill="url(#background)"/>
-  <path d="M37 79a31 31 0 0 1 54 0" fill="none" stroke="url(#bridge)" stroke-width="11" stroke-linecap="round"/>
-  <path d="M91 79a31 31 0 0 1-54 0" fill="none" stroke="#f4a259" stroke-width="11" stroke-linecap="round"/>
-  <path d="M92 67 104 79 92 91Z" fill="#f4a259"/>
-  <path d="M36 67 24 79 36 91Z" fill="#37d5b6"/>
-  <circle cx="64" cy="79" r="8" fill="#e7fbf7"/>
-  <rect x="1" y="1" width="126" height="126" rx="27" fill="none" stroke="#ffffff" stroke-opacity=".12" stroke-width="2"/>
+  <rect width="128" height="128" fill="url(#background)"/>
+  <g transform="translate(64 46)" fill="url(#blossom)">
+    <path id="codexPetal" d="M0-33c6.8 7.8 8.6 15.4 0 24-8.6-8.6-6.8-16.2 0-24Z"/>
+    <use href="#codexPetal" transform="rotate(60)"/>
+    <use href="#codexPetal" transform="rotate(120)"/>
+    <use href="#codexPetal" transform="rotate(180)"/>
+    <use href="#codexPetal" transform="rotate(240)"/>
+    <use href="#codexPetal" transform="rotate(300)"/>
+    <path d="M0-11 9.5-5.5 9.5 5.5 0 11-9.5 5.5-9.5-5.5Z" fill="#08111d"/>
+  </g>
+  <text x="64" y="110" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="800" letter-spacing="1.5" fill="#ffffff">GO</text>
+  <rect x="1" y="1" width="126" height="126" fill="none" stroke="#ffffff" stroke-opacity=".1" stroke-width="2"/>
 </svg>
