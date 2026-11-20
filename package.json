@@ -1,8 +1,9 @@
 {
 	"name": "opencode-go-provider-for-codex",
-	"publisher": "codexgo",
+	"publisher": "stardust-z23",
 	"displayName": "%displayName%",
 	"description": "%description%",
+	"icon": "resources/extension-icon.png",
 	"keywords": [
 		"ai",
 		"codex",
