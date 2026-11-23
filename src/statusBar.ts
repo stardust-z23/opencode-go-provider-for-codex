@@ -328,6 +328,9 @@ function appendActions(md: vscode.MarkdownString): void {
 	md.appendMarkdown(
 		`[$(graph) ${l10n("Open usage dashboard")}](command:codexgo.openUsageDashboard)  \n`,
 	);
+	md.appendMarkdown(
+		`[$(library) ${l10n("Open model center")}](command:codexgo.openModelCenter)  \n`,
+	);
 	md.appendMarkdown(`[$(key) ${l10n("Set API key")}](command:codexgo.setApiKey)  \n`);
 	md.appendMarkdown(
 		`[$(cloud-download) ${l10n("Sync models")}](command:codexgo.syncModelCatalog)  \n`,

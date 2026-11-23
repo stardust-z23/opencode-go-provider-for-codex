@@ -18,7 +18,7 @@
 		"type": "git",
 		"url": "https://github.com/stardust-z23/opencode-go-provider-for-codex"
 	},
-	"version": "0.2.11",
+	"version": "0.2.12",
 	"engines": {
 		"vscode": "^1.116.0"
 	},
