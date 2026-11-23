@@ -191,15 +191,13 @@
 				track.append(fill);
 				const value = element("div", "quota-value");
 				value.append(element("strong", "", window.percentText));
-				if (window.resetText) {
-					value.append(
-						element(
-							"span",
-							"quota-reset",
-							formatTemplate(labels.resetIn, [window.resetText]),
-						),
-					);
-				}
+				const resetText = window.resetText
+					? formatTemplate(labels.resetIn, [window.resetText])
+					: "";
+				// Preserve the fourth narrow-layout grid cell when a reset is intentionally hidden.
+				const reset = element("span", "quota-reset", resetText);
+				if (!resetText) reset.setAttribute("aria-hidden", "true");
+				value.append(reset);
 				row.append(label, track, value);
 				return row;
 			}),

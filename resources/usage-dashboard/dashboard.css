@@ -324,6 +324,10 @@ main {
 	white-space: nowrap;
 }
 
+.quota-reset:empty {
+	display: none;
+}
+
 .section-meta {
 	display: flex;
 	flex-wrap: wrap;
@@ -706,6 +710,11 @@ tbody tr:nth-child(even):hover {
 	.quota-value strong,
 	.quota-reset {
 		align-self: center;
+	}
+
+	.quota-reset:empty {
+		display: inline;
+		visibility: hidden;
 	}
 
 	.submetric-strip {
