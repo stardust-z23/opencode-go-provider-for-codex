@@ -14,7 +14,11 @@ import * as vscode from "vscode";
 import { logger } from "./logger";
 import { l10n, l10nFormat } from "./localize";
 import { delay, extractHttpStatus, fetchJsonWithTimeout } from "./utils";
-import { buildModelList, extractModelIds, ModelInfo } from "./modelInfo";
+import {
+	buildModelList,
+	extractChatModelIds,
+	ModelInfo,
+} from "./modelInfo";
 import {
 	ensureOfficialCatalogLoaded,
 	getOfficialCatalogFacts,
@@ -164,7 +168,7 @@ async function fetchApiModelIds(apiKey: string, token: vscode.CancellationToken)
 				headers: { Authorization: `Bearer ${apiKey}` },
 				timeoutMs: FETCH_TIMEOUT_MS,
 			});
-			const ids = extractModelIds(data);
+			const ids = extractChatModelIds(data);
 			if (ids.length === 0) {
 				throw new Error("empty model list");
 			}

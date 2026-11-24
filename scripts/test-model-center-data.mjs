@@ -114,10 +114,36 @@ test("normalizes public model metadata", () => {
 	const normalized = data.normalizeModelInfo(model());
 	assert.ok(normalized);
 	assert.equal(normalized.id, "grok-4.7");
+	assert.equal(normalized.type, "chat");
 	assert.equal(normalized.monthlyUsage.go, 15);
 	assert.equal(normalized.inputModalities.length, 2);
 	assert.equal(normalized.contextLimit, 500000);
 	assert.equal(normalized.limitedTime, false);
+});
+
+test("preserves non-chat model types and infers legacy output types", () => {
+	const embedding = data.normalizeModelInfo(
+		model({
+			id: "embedding-model",
+			type: "embedding",
+			modalities: { input: ["text"], output: ["embedding"] },
+		}),
+	);
+	const decision = data.normalizeModelInfo(
+		model({
+			id: "decision-model",
+			modalities: { input: ["text"], output: ["decision"] },
+		}),
+	);
+	assert.ok(embedding);
+	assert.ok(decision);
+	assert.equal(embedding.type, "embedding");
+	assert.equal(decision.type, "decision");
+	assert.equal(data.isChatModel(embedding), false);
+	assert.equal(data.isChatModel(decision), false);
+	const chat = data.normalizeModelInfo(model());
+	assert.ok(chat);
+	assert.equal(data.isChatModel(chat), true);
 });
 
 test("detects free limited-time models", () => {

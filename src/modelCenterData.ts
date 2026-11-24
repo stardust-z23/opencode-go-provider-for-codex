@@ -5,6 +5,7 @@ export type ModelCacheWritePrice = number | Record<string, unknown> | null;
 export interface GoModelInfo {
 	id: string;
 	name: string;
+	type?: string;
 	canonicalId?: string;
 	family?: string;
 	ownedBy?: string;
@@ -167,9 +168,18 @@ export function normalizeModelInfo(value: unknown): GoModelInfo | undefined {
 		planRequests(goRaw.requests) ??
 		planRequests(value.requestsPerFiveHours);
 	const basePrice = isRecord(value.cost) ? getBasePrice(value.cost) : undefined;
+	const inputModalities =
+		stringArray(modalities.input).length > 0
+			? stringArray(modalities.input)
+			: stringArray(value.inputModalities);
+	const outputModalities =
+		stringArray(modalities.output).length > 0
+			? stringArray(modalities.output)
+			: stringArray(value.outputModalities);
 	return {
 		id,
 		name: optionalString(value.name) ?? id,
+		type: normalizeModelType(value.type, outputModalities),
 		canonicalId:
 			optionalString(value.canonical_id) ??
 			optionalString(value.canonicalId),
@@ -188,14 +198,8 @@ export function normalizeModelInfo(value: unknown): GoModelInfo | undefined {
 		recommendedApi:
 			optionalString(value.recommended_api) ??
 			optionalString(value.recommendedApi),
-		inputModalities:
-			stringArray(modalities.input).length > 0
-				? stringArray(modalities.input)
-				: stringArray(value.inputModalities),
-		outputModalities:
-			stringArray(modalities.output).length > 0
-				? stringArray(modalities.output)
-				: stringArray(value.outputModalities),
+		inputModalities,
+		outputModalities,
 		openWeights:
 			typeof value.open_weights === "boolean"
 				? value.open_weights
@@ -239,6 +243,38 @@ export function normalizeModelInfo(value: unknown): GoModelInfo | undefined {
 		api: isRecord(value.api) ? value.api : undefined,
 		capabilities: isRecord(value.capabilities) ? value.capabilities : undefined,
 	};
+}
+
+export function isChatModel(
+	model: Pick<GoModelInfo, "type" | "outputModalities">,
+): boolean {
+	if (model.type !== undefined) {
+		return model.type === "chat";
+	}
+	return (
+		model.outputModalities.length === 0 ||
+		model.outputModalities.includes("text")
+	);
+}
+
+function normalizeModelType(
+	value: unknown,
+	outputModalities: readonly string[],
+): string | undefined {
+	const explicit = optionalString(value)?.toLowerCase();
+	if (explicit) {
+		return explicit;
+	}
+	if (outputModalities.includes("embedding")) {
+		return "embedding";
+	}
+	if (outputModalities.includes("decision")) {
+		return "decision";
+	}
+	if (outputModalities.includes("text")) {
+		return "chat";
+	}
+	return undefined;
 }
 
 export function normalizeModelCatalog(payload: unknown, fetchedAt = Date.now()): ModelCatalogSnapshot {

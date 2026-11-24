@@ -56,6 +56,8 @@ export interface ModelInfo {
 /** 从官方公开模型目录解析出的单模型元数据。 */
 export interface CatalogFacts {
 	name?: string;
+	modelType?: string;
+	codexSelectable?: boolean;
 	contextLength?: number;
 	reasoning?: boolean;
 	efforts?: string[];
@@ -74,17 +76,44 @@ export interface CatalogFacts {
  * 改了结构也绝不能把扩展搞崩。
  */
 export function extractModelIds(data: unknown): string[] {
-	const out: string[] = [];
+	return collectModelEntries(data).map((entry) => entry.id);
+}
+
+/** Extract only text-chat models; untyped legacy entries remain accepted. */
+export function extractChatModelIds(data: unknown): string[] {
+	return collectModelEntries(data)
+		.filter(
+			(entry) =>
+				entry.type === undefined || entry.type.toLowerCase() === "chat",
+		)
+		.map((entry) => entry.id);
+}
+
+interface ModelEntry {
+	id: string;
+	type?: string;
+}
+
+function collectModelEntries(data: unknown): ModelEntry[] {
+	const out: ModelEntry[] = [];
 	const push = (value: unknown): void => {
 		if (typeof value === "string") {
 			const id = value.trim();
 			if (id) {
-				out.push(id);
+				out.push({ id });
 			}
 		} else if (value !== null && typeof value === "object") {
-			const id = (value as { id?: unknown }).id;
+			const record = value as { id?: unknown; type?: unknown };
+			const id =
+				typeof record.id === "string" ? record.id.trim() : "";
 			if (typeof id === "string" && id.trim()) {
-				out.push(id.trim());
+				out.push({
+					id,
+					type:
+						typeof record.type === "string" && record.type.trim()
+							? record.type.trim()
+							: undefined,
+				});
 			}
 		}
 	};
@@ -97,7 +126,14 @@ export function extractModelIds(data: unknown): string[] {
 			array.forEach(push);
 		}
 	}
-	return [...new Set(out)];
+	const seen = new Set<string>();
+	return out.filter((entry) => {
+		if (seen.has(entry.id)) {
+			return false;
+		}
+		seen.add(entry.id);
+		return true;
+	});
 }
 
 /**
@@ -140,6 +176,9 @@ export function buildModelList(
 
 		const hard = hardcodedById.get(id);
 		const facts = catalogFacts(id) ?? {};
+		if (facts.codexSelectable === false) {
+			continue;
+		}
 		const wireApi: WireApi = hard?.wireApi ?? facts.wireApi ?? "chat";
 		const zeroCost =
 			facts.cost !== undefined && (facts.cost.input ?? 0) === 0 && (facts.cost.output ?? 0) === 0;

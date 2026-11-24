@@ -314,7 +314,13 @@
 		const query = state.search.trim().toLowerCase();
 		const models = data.models.filter((model) => {
 			if (!query) return true;
-			return [model.name, model.id, model.canonicalId, model.description]
+			return [
+				model.name,
+				model.id,
+				model.modelType,
+				model.canonicalId,
+				model.description,
+			]
 				.filter(Boolean)
 				.some((value) => String(value).toLowerCase().includes(query));
 		});
@@ -434,6 +440,22 @@
 		}
 		if (facts.childElementCount > 0) name.append(facts);
 		const badges = element("div", "badge-row");
+		if (model.modelType && model.modelType !== "chat") {
+			badges.append(
+				element(
+					"span",
+					"badge model-type",
+					modelTypeLabel(model.modelType),
+				),
+			);
+			badges.append(
+				element(
+					"span",
+					"badge unavailable",
+					labels.notSelectableInCodex,
+				),
+			);
+		}
 		if (model.featured) badges.append(element("span", "badge featured", labels.featured));
 		if (model.limitedTime) badges.append(element("span", "badge limited", labels.limitedTime));
 		if (model.deprecated) badges.append(element("span", "badge limited", labels.deprecated));
@@ -646,6 +668,19 @@
 			heading,
 			element("div", "update-meta", `${change.modelName} · ${change.modelId}`),
 		);
+		if (
+			change.modelType &&
+			change.modelType !== "chat" &&
+			change.codexSelectable === false
+		) {
+			item.append(
+				element(
+					"div",
+					"update-type-note",
+					`${modelTypeLabel(change.modelType)} · ${labels.notSelectableInCodex}`,
+				),
+			);
+		}
 		const summaries = Array.isArray(change.summaries) ? change.summaries : [];
 		if (summaries.length > 0) {
 			const list = element("ul", "change-summary-list");
@@ -738,6 +773,12 @@
 			metadata: labels.metadata,
 		};
 		return labelsByKind[kind] || kind;
+	}
+
+	function modelTypeLabel(type) {
+		if (type === "embedding") return labels.embeddingModel;
+		if (type === "decision") return labels.decisionModel;
+		return labels.chatModel || type;
 	}
 
 	function formatPrice(value) {

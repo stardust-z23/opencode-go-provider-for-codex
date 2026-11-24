@@ -559,6 +559,17 @@ tbody tr:nth-child(even):hover {
 	border-color: var(--vscode-charts-blue);
 }
 
+.badge.model-type {
+	color: var(--vscode-charts-cyan);
+	border-color: var(--vscode-charts-cyan);
+	font-weight: 600;
+}
+
+.badge.unavailable {
+	border-style: dashed;
+	color: var(--vscode-descriptionForeground);
+}
+
 .badge.limited {
 	color: var(--vscode-editorWarning-foreground);
 	border-color: var(--vscode-editorWarning-foreground);
@@ -818,6 +829,12 @@ tbody tr:nth-child(even):hover {
 .update-meta {
 	margin-top: 3px;
 	color: var(--vscode-descriptionForeground);
+	font-size: 10px;
+}
+
+.update-type-note {
+	margin-top: 4px;
+	color: var(--vscode-editorWarning-foreground);
 	font-size: 10px;
 }
 

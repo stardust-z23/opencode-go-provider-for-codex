@@ -6,6 +6,7 @@ import {
 	effectiveModelPrice,
 	type GoModelInfo,
 	type GoPlan,
+	isChatModel,
 	modelContextPriceTiers,
 	modelTimePriceRules,
 	summarizeModelChange,
@@ -25,6 +26,8 @@ interface ModelCenterMessage {
 interface ModelRow {
 	id: string;
 	name: string;
+	modelType: string;
+	codexSelectable: boolean;
 	canonicalId?: string;
 	description?: string;
 	releaseDate?: string;
@@ -248,6 +251,9 @@ async function openTrustedUrl(raw: string): Promise<void> {
 }
 
 function viewData(snapshot: ModelCenterViewSnapshot): Record<string, unknown> {
+	const modelsById = new Map(
+		snapshot.models.map((model) => [model.id, model]),
+	);
 	return {
 		...snapshot,
 		models: snapshot.models.map((model) =>
@@ -255,6 +261,10 @@ function viewData(snapshot: ModelCenterViewSnapshot): Record<string, unknown> {
 		),
 		changes: snapshot.changes.map((change) => ({
 			...change,
+			modelType: modelsById.get(change.modelId)?.type,
+			codexSelectable: modelsById.has(change.modelId)
+				? isChatModel(modelsById.get(change.modelId)!)
+				: undefined,
 			summaries: summarizeModelChange(change).map((summary) =>
 				l10nFormat(
 					summary.template,
@@ -306,6 +316,8 @@ function modelRow(model: GoModelInfo): ModelRow {
 	return {
 		id: model.id,
 		name: model.name,
+		modelType: model.type ?? "chat",
+		codexSelectable: isChatModel(model),
 		canonicalId: model.canonicalId,
 		description: model.description,
 		releaseDate: model.releaseDate,
@@ -360,6 +372,10 @@ function modelCenterLabels(): Record<string, string> {
 		goTeams: l10n("Go Teams"),
 		models: l10n("Models"),
 		featured: l10n("Featured"),
+		chatModel: l10n("Chat"),
+		embeddingModel: l10n("Embedding"),
+		decisionModel: l10n("Decision"),
+		notSelectableInCodex: l10n("Not selectable in Codex"),
 		limitedTime: l10n("Free for a limited time"),
 		deprecated: l10n("Deprecated"),
 		notIncluded: l10n("Not included"),

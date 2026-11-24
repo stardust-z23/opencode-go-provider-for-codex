@@ -1,4 +1,5 @@
 import {
+	isChatModel,
 	normalizeModelCatalog,
 	type GoModelInfo,
 	type ModelCatalogSnapshot,
@@ -147,6 +148,7 @@ function catalogFacts(model: GoModelInfo): CatalogFacts {
 	const output = recordValue(costText?.output);
 	const facts: CatalogFacts = {
 		name: model.name,
+		codexSelectable: isChatModel(model),
 		wireApi: api.wireApi,
 		protocolKnown: api.known,
 		vision: model.inputModalities.some(
@@ -155,6 +157,9 @@ function catalogFacts(model: GoModelInfo): CatalogFacts {
 		),
 		deprecated: model.deprecated,
 	};
+	if (model.type) {
+		facts.modelType = model.type;
+	}
 	if (model.contextLimit !== undefined) {
 		facts.contextLength = model.contextLimit;
 	}

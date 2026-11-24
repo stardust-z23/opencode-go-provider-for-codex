@@ -5,6 +5,7 @@ import { logger } from "./logger";
 import { getUserAgent } from "./utils";
 import {
 	diffModelCatalogs,
+	isChatModel,
 	type ModelCatalogSnapshot,
 	type ModelChange,
 	normalizeModelCatalog,
@@ -232,8 +233,17 @@ export class ModelCenterService implements vscode.Disposable {
 		if (modelResult.status === "fulfilled") {
 			const next = modelResult.value.snapshot;
 			changes = diffModelCatalogs(previous, next, now);
+			const nextById = new Map(
+				next.models.map((model) => [model.id, model]),
+			);
 			addedModelIds = changes
-				.filter((change) => change.kind === "added")
+				.filter((change) => {
+					if (change.kind !== "added") {
+						return false;
+					}
+					const model = nextById.get(change.modelId);
+					return model !== undefined && isChatModel(model);
+				})
 				.map((change) => change.modelId);
 			this.state.snapshot = next;
 			this.state.lastModelFetchAt = now;

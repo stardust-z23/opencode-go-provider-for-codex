@@ -206,7 +206,8 @@ Codex 的模型选择器会用内部可见档位列表过滤目录，默认不�
 - 状态保存在 `<globalStorage>/model-center/state.json`，变更与消息保留 90 天。
 - 月额度固定并列展示 Go、Go Plus、Go Teams，不提供套餐切换，也不标记当前套餐。
 - 模型界面同时展示基础价格、上下文 overrides、时间 multipliers、上下文/输出限制、训练/ZDR/地区标记。
-- 公开目录出现新模型时，`catalogSync.autoSyncModelCatalogForNewModels()` 只在以下条件同时满足时自动重建目录：Codex 的 `model_catalog_json` 指向本扩展文件、生成文件存在、API 密钥与本地代理就绪、Codex 可执行文件可探测。
+- 官方 `decision` / `embedding` 条目继续进入快照、价格表和变更历史，但 `catalogSync`、Codex 模型列表与自动同步只接受 `chat` 或文本输出模型；非对话条目在模型中心标记为 Codex 不可选择。
+- 公开目录出现新的文本对话模型时，`catalogSync.autoSyncModelCatalogForNewModels()` 只在以下条件同时满足时自动重建目录：Codex 的 `model_catalog_json` 指向本扩展文件、生成文件存在、API 密钥与本地代理就绪、Codex 可执行文件可探测。决策和向量模型只记录动态，不触发目录同步。
 - 自动同步使用跨窗口锁文件，失败沿用原有回滚路径；价格与额度变化只提醒，不修改 Codex 目录。
 
 ## 响应元数据

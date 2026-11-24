@@ -8,7 +8,13 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { buildModelList, extractModelIds, formatTokenCount, formatPrice } = require("../out/modelInfo.js");
+const {
+	buildModelList,
+	extractChatModelIds,
+	extractModelIds,
+	formatTokenCount,
+	formatPrice,
+} = require("../out/modelInfo.js");
 const { HARDCODED_GO_MODELS } = require("../out/hardcodedModels.js");
 const officialCatalog = require("../out/officialCatalog.js");
 
@@ -32,6 +38,27 @@ test("extractModelIds 能处理各种真实出现的载荷结构", () => {
 	assert.deepEqual(extractModelIds("nonsense"), []);
 });
 
+test("extractChatModelIds excludes typed embedding and decision models", () => {
+	const payload = {
+		data: [
+			{ id: "chat-model", type: "chat" },
+			{ id: "embedding-model", type: "embedding" },
+			{ id: "decision-model", type: "decision" },
+			{ id: "legacy-untyped-model" },
+		],
+	};
+	assert.deepEqual(extractModelIds(payload), [
+		"chat-model",
+		"embedding-model",
+		"decision-model",
+		"legacy-untyped-model",
+	]);
+	assert.deepEqual(extractChatModelIds(payload), [
+		"chat-model",
+		"legacy-untyped-model",
+	]);
+});
+
 test("已知模型的协议来自内置快照", () => {
 	const list = buildModelList(["kimi-k3", "grok-4.7", "qwen3.8-max"], () => undefined, []);
 	const byId = Object.fromEntries(list.map((m) => [m.id, m]));
@@ -52,6 +79,36 @@ test("未知模型按 chat 猜测，但标记为协议未知", () => {
 	assert.equal(list[0].supported, true);
 	assert.equal(list[0].protocolKnown, false);
 	assert.equal(list[0].name, "brand-new-model");
+});
+
+test("buildModelList excludes catalog entries marked unavailable to Codex", () => {
+	const facts = (id) => {
+		if (id === "embedding-model") {
+			return {
+				modelType: "embedding",
+				codexSelectable: false,
+				wireApi: "chat",
+			};
+		}
+		if (id === "decision-model") {
+			return {
+				modelType: "decision",
+				codexSelectable: false,
+				wireApi: "chat",
+			};
+		}
+		return {
+			modelType: "chat",
+			codexSelectable: true,
+			wireApi: "chat",
+		};
+	};
+	const list = buildModelList(
+		["chat-model", "embedding-model", "decision-model"],
+		facts,
+		[],
+	);
+	assert.deepEqual(list.map((entry) => entry.id), ["chat-model"]);
 });
 
 test("DeepSeek follows the official Chat Completions mapping", () => {
@@ -187,6 +244,8 @@ test("官方公开目录提供上下文、推理、多模态和协议元数据",
 	assert.deepEqual(officialCatalog.getOfficialCatalogModelIds(), ["official-model"]);
 	assert.deepEqual(officialCatalog.getOfficialCatalogFacts("official-model"), {
 		name: "Official Model",
+		modelType: "chat",
+		codexSelectable: true,
 		wireApi: "anthropic",
 		protocolKnown: true,
 		vision: true,
