@@ -15,6 +15,21 @@ function test(name, fn) {
 	tests.push([name, fn]);
 }
 
+test("local proxy exposes a health endpoint for cross-window reuse", async () => {
+	const proxy = await startLocalProxy({
+		port: 0,
+		upstreamBaseUrl: "http://127.0.0.1:1/v1",
+		resolveApiKey: async () => "test-key",
+	});
+	try {
+		const response = await fetch(`${proxy.baseUrl}/health`);
+		assert.equal(response.status, 200);
+		assert.deepEqual(await response.json(), { status: "ok" });
+	} finally {
+		await proxy.close();
+	}
+});
+
 test("repairNativeResponsesRequest restores reasoning_text from summary", () => {
 	const body = {
 		input: [

@@ -222,7 +222,7 @@ Codex 的模型选择器会用内部可见档位列表过滤目录，默认不�
 
 - 每个 VS Code 窗口都会激活扩展并尝试绑定 `127.0.0.1:15722`。
 - 第一个窗口成功监听；后续窗口记录 `EADDRINUSE`，但只要首个窗口仍在运行，所有窗口仍可通过同一个代理 URL 和派生 token 正常推理。
-- 非持有窗口的 `isProxyActive()` 为 false，因此依赖该判断的扩展命令（例如目录同步）可能显示代理不可用；这些操作应在持有窗口执行。
+- 非持有窗口的 `isProxyActive()` 仍为 false，但目录同步会请求 `http://127.0.0.1:<port>/v1/health`；健康检查成功后即可复用共享代理和派生 token，无需争抢端口所有权。
 - 当前没有 leader election 或自动接管。持有端口的窗口关闭后，其他窗口会保持 `error` 状态，需要重载窗口或触发会调用 `ensureProxyStarted()` 的操作。
 - 使用独立 VS Code profile 和不同的 `codexgo.proxyPort` / `codexgo.codexHome` 时，各扩展实例可以各自持有代理。
 

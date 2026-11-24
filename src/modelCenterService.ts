@@ -638,9 +638,18 @@ function parseAutoSync(value: unknown): AutoSyncResult | undefined {
 	) {
 		return undefined;
 	}
+	const detail = stringValue(value.detail);
+	if (
+		value.status === "skipped" &&
+		(detail === "The local proxy is not active in this VS Code window." ||
+			detail ===
+				"The local proxy is not reachable from this VS Code window.")
+	) {
+		return undefined;
+	}
 	return {
 		status: value.status,
-		detail: stringValue(value.detail),
+		detail,
 		count: numeric(value.count),
 	};
 }

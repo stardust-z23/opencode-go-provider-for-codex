@@ -124,11 +124,11 @@ function getProxyBaseUrl(): string {
 	return status.state === "on" ? status.baseUrl : proxyBaseUrl(getConfiguredPort());
 }
 
-/** Provider auth for callers that need to apply a selection while the proxy is on. */
+/** Provider auth for callers that can use a proxy owned by this or another window. */
 export async function getProxyProviderAuth(
 	secrets: vscode.SecretStorage,
 ): Promise<{ baseUrl: string; bearerToken: string } | undefined> {
-	if (!isProxyActive()) {
+	if (!(await isProxyReachable())) {
 		return undefined;
 	}
 	const keyInfo = await resolveApiKey(secrets);
@@ -139,6 +139,25 @@ export async function getProxyProviderAuth(
 		baseUrl: getProxyBaseUrl(),
 		bearerToken: deriveProxyToken(keyInfo.key),
 	};
+}
+
+async function isProxyReachable(): Promise<boolean> {
+	if (isProxyActive()) {
+		return true;
+	}
+	try {
+		const response = await fetch(
+			`${proxyBaseUrl(getConfiguredPort())}/health`,
+			{ signal: AbortSignal.timeout(1_500) },
+		);
+		if (!response.ok) {
+			return false;
+		}
+		const payload = (await response.json()) as { status?: unknown };
+		return payload.status === "ok";
+	} catch {
+		return false;
+	}
 }
 
 async function enableProxy(userInitiated: boolean): Promise<void> {

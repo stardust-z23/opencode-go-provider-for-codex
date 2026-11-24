@@ -38,7 +38,7 @@ import { l10n, l10nFormat } from "./localize";
 import { logger } from "./logger";
 import { describeModelFetchError, prepareModelList } from "./modelList";
 import { extractTopLevelValue, removeTopLevelKey } from "./tomlEdit";
-import { ensureProxyStarted, getProxyProviderAuth, isProxyActive } from "./proxyController";
+import { ensureProxyStarted, getProxyProviderAuth } from "./proxyController";
 
 export interface CatalogSyncContext extends ApiKeyContext {
 	globalState: vscode.Memento;
@@ -199,8 +199,8 @@ async function performCatalogSync(
 		return { kind: "cancelled" };
 	}
 
-	const proxyActive = isProxyActive();
-	const usable = proxyActive
+	const proxyAvailable = proxyAuth !== undefined;
+	const usable = proxyAvailable
 		? models.filter((model) => model.supported)
 		: [];
 	const excluded = models.length - usable.length;
@@ -327,18 +327,12 @@ export async function autoSyncModelCatalogForNewModels(
 		if (!keyInfo.key) {
 			return { status: "skipped", detail: "No API key is configured." };
 		}
-		if (!isProxyActive()) {
-			return {
-				status: "skipped",
-				detail:
-					"The local proxy is not active in this VS Code window.",
-			};
-		}
 		const proxyAuth = await getProxyProviderAuth(ctx.secrets);
 		if (!proxyAuth) {
 			return {
 				status: "skipped",
-				detail: "The local proxy is not ready.",
+				detail:
+					"The local proxy is not reachable from this VS Code window.",
 			};
 		}
 		const candidates = findCodexExecutables(getCodexExecutableSetting());
