@@ -1,8 +1,30 @@
 import { createHash, randomUUID } from "crypto";
 import * as http from "http";
-import { Readable } from "stream";
 import { getUserAgent } from "../utils";
+import {
+	compactionResponse,
+	compactionSse,
+	compactionReplayText,
+	hasCompactionTrigger,
+	isCompactionItem,
+	prepareCompactionRequest,
+	replayOwnCompactionItems,
+	summaryFromResponsesOutput,
+} from "./compaction";
+import {
+	extractChatToolOutput,
+	responsesInputAudioToChatPart,
+	responsesInputFileToChatPart,
+} from "./media";
 import { proxyAnthropicMessages } from "./messages";
+import {
+	dedupeDuplicateArgumentKeys,
+	flattenNativeNamespaces,
+	NativeResponsesSseTransformer,
+	NamespaceRestoreMap,
+	restoreResponseNamespaces,
+} from "./responsesRepair";
+import { resolveSessionId } from "./session";
 
 export type ProxyWireApi = "responses" | "chat" | "anthropic";
 
@@ -72,8 +94,10 @@ interface ProxyRequestContext {
 	traceId: string;
 	requestedModel: string;
 	sessionId?: string;
+	sessionSource?: string;
 	clientRequestId?: string;
 	stream: boolean;
+	compaction: boolean;
 }
 
 interface ToolState {
@@ -101,11 +125,12 @@ interface ReasoningState {
 	closed: boolean;
 }
 
-const MAX_REQUEST_BYTES = 32 * 1024 * 1024;
+const MAX_REQUEST_BYTES = 128 * 1024 * 1024;
 const INLINE_THINK_OPEN = "<" + "think" + ">";
 const INLINE_THINK_CLOSE = "<" + "/" + "think" + ">";
 const MAX_CACHED_CHAT_RESPONSES = 256;
 const ORPHAN_TOOL_OUTPUT_PREFIX = "[tool result without a matching tool call]";
+const LOOPBACK_PROBE_HEADER = "x-codexgo-loopback-probe";
 
 interface CachedChatResponse {
 	calls: Map<string, Record<string, unknown>>;
@@ -344,7 +369,12 @@ async function handleProxyRequest(
 
 	const url = new URL(req.url ?? "/", "http://127.0.0.1");
 	if (req.method === "GET" && (url.pathname === "/health" || url.pathname === "/v1/health")) {
-		res.writeHead(200, { "content-type": "application/json" });
+		const headers: Record<string, string> = { "content-type": "application/json" };
+		const probe = headerValue(req.headers[LOOPBACK_PROBE_HEADER]);
+		if (probe) {
+			headers[LOOPBACK_PROBE_HEADER] = probe;
+		}
+		res.writeHead(200, headers);
 		res.end(JSON.stringify({ status: "ok" }));
 		return;
 	}
@@ -402,6 +432,7 @@ async function handleProxyRequest(
 	const route = await options.resolveModel?.(modelId);
 	const upstreamEfforts = route?.efforts ?? (await options.resolveEfforts?.(modelId));
 	mapCodexEffortToUpstream(body, upstreamEfforts);
+	const resolvedSession = resolveSessionId(req.headers, body);
 
 	const wireApi = route?.wireApi ?? (await options.resolveWireApi?.(modelId)) ?? "chat";
 	const upstreamModelId = route?.upstreamModelId?.trim() || modelId;
@@ -412,13 +443,25 @@ async function handleProxyRequest(
 		codexChatHistory.enrichRequest(body);
 	}
 	const repairedCallIds = repairResponsesToolCallIds(body);
-	if (repairedCallIds.repaired > 0 || repairedCallIds.convertedOrphanOutputs > 0) {
+	const deduplicatedArguments = dedupeDuplicateArgumentKeys(body);
+	if (
+		repairedCallIds.repaired > 0 ||
+		repairedCallIds.convertedOrphanOutputs > 0 ||
+		deduplicatedArguments > 0
+	) {
 		options.log?.("responses.tool_call_ids_repaired", {
 			count: repairedCallIds.repaired,
 			convertedOrphanOutputs: repairedCallIds.convertedOrphanOutputs,
+			deduplicatedArguments,
 			model: modelId,
 			wireApi,
 		});
+	}
+
+	const compactRequest =
+		endpoint === "compact" || hasCompactionTrigger(body);
+	if (compactRequest && wireApi !== "responses") {
+		prepareCompactionRequest(body);
 	}
 
 	const context: ProxyRequestContext = {
@@ -428,39 +471,19 @@ async function handleProxyRequest(
 		startedAt,
 		traceId: randomUUID(),
 		requestedModel: modelId,
-		sessionId:
-			headerValue(req.headers["session-id"]) ??
-			headerValue(req.headers["thread-id"]),
+		sessionId: resolvedSession.id,
+		sessionSource: resolvedSession.source,
 		clientRequestId:
 			headerValue(req.headers["x-client-request-id"]) ??
 			headerValue(req.headers["x-request-id"]),
 		stream: body.stream !== false,
+		compaction: compactRequest,
 	};
-	if (wireApi !== "responses" && hasCompactionTrigger(body)) {
-		res.writeHead(501, { "content-type": "application/json" });
-		res.end(
-			JSON.stringify({
-				error: {
-					message: `${wireApi === "anthropic" ? "Anthropic Messages" : "Chat Completions"} remote compaction is not supported`,
-				},
-			}),
-		);
-		return;
-	}
 	if (endpoint === "compact") {
-		if (wireApi !== "responses") {
-			res.writeHead(501, { "content-type": "application/json" });
-			res.end(
-				JSON.stringify({
-					error: {
-						message: `${wireApi === "anthropic" ? "Anthropic Messages" : "Chat Completions"} compaction is not supported`,
-					},
-				}),
-			);
+		if (wireApi === "responses") {
+			await proxyNativeResponses(req, res, options, context, "responses/compact");
 			return;
 		}
-		await proxyNativeResponses(req, res, options, context, "responses/compact");
-		return;
 	}
 
 	if (wireApi === "responses") {
@@ -568,18 +591,10 @@ function requestLogIdentity(context: ProxyRequestContext): Record<string, unknow
 				? context.body.previous_response_id
 				: undefined,
 		sessionId: context.sessionId,
+		sessionSource: context.sessionSource,
 		stream: context.stream,
 		startedAt: new Date(context.startedAt).toISOString(),
 	};
-}
-
-function hasCompactionTrigger(body: Record<string, unknown>): boolean {
-	return (
-		Array.isArray(body.input) &&
-		body.input.some(
-			(item) => isRecord(item) && item.type === "compaction_trigger",
-		)
-	);
 }
 
 function normalizeResponsesPath(pathname: string): "responses" | "compact" | undefined {
@@ -608,10 +623,40 @@ async function proxyNativeResponses(
 	context: ProxyRequestContext,
 	endpoint: string,
 ): Promise<void> {
+	const replayedCompactions = replayOwnCompactionItems(context.body);
+	if (replayedCompactions > 0) {
+		options.log?.("responses.compaction_replayed", {
+			endpoint,
+			count: replayedCompactions,
+			model: typeof context.body.model === "string" ? context.body.model : undefined,
+		});
+	}
+	let namespaceRestoreMap: NamespaceRestoreMap;
+	try {
+		namespaceRestoreMap = flattenNativeNamespaces(context.body);
+	} catch (error) {
+		res.writeHead(400, { "content-type": "application/json" });
+		res.end(
+			JSON.stringify({
+				error: {
+					type: "invalid_request_error",
+					message: error instanceof Error ? error.message : String(error),
+				},
+			}),
+		);
+		return;
+	}
 	const repaired = repairNativeResponsesRequest(context.body);
 	if (repaired.changed) {
 		options.log?.("responses.reasoning_repaired", {
 			endpoint,
+			model: typeof context.body.model === "string" ? context.body.model : undefined,
+		});
+	}
+	if (namespaceRestoreMap.size > 0) {
+		options.log?.("responses.namespaces_flattened", {
+			endpoint,
+			count: namespaceRestoreMap.size,
 			model: typeof context.body.model === "string" ? context.body.model : undefined,
 		});
 	}
@@ -624,7 +669,12 @@ async function proxyNativeResponses(
 
 	const upstream = await fetch(joinUrl(options.upstreamBaseUrl, endpoint), {
 		method: "POST",
-		headers: buildUpstreamHeaders(req.headers, context.apiKey, context.body.stream !== false),
+		headers: buildUpstreamHeaders(
+			req.headers,
+			context.apiKey,
+			context.body.stream !== false,
+			context.sessionId,
+		),
 		body: JSON.stringify(repaired.body),
 		signal: controller.signal,
 	});
@@ -641,51 +691,72 @@ async function proxyNativeResponses(
 		return;
 	}
 	if (context.body.stream === false) {
-		const payload = await readUpstreamJsonWithUsage(res, upstream);
+		const payload = await readUpstreamJsonWithUsage(res, upstream, (value) =>
+			restoreResponseNamespaces(value, namespaceRestoreMap),
+		);
 		reportResponsesUsage(options, context, endpoint, responsesUsageFromPayload(payload));
 		return;
 	}
 	const contentType = upstream.headers.get("content-type") ?? "";
 	if (!contentType.includes("text/event-stream")) {
-		const payload = await readUpstreamJsonWithUsage(res, upstream);
+		const payload = await readUpstreamJsonWithUsage(res, upstream, (value) =>
+			restoreResponseNamespaces(value, namespaceRestoreMap),
+		);
 		reportResponsesUsage(options, context, endpoint, responsesUsageFromPayload(payload));
 		return;
 	}
-	const stream = Readable.fromWeb(upstream.body as never);
+	const usage = await pipeNativeResponsesSse(upstream, res, namespaceRestoreMap);
+	reportResponsesUsage(options, context, endpoint, usage);
+}
+
+async function pipeNativeResponsesSse(
+	upstream: Response,
+	res: http.ServerResponse,
+	restoreMap: NamespaceRestoreMap,
+): Promise<Record<string, unknown> | undefined> {
+	if (!upstream.body) {
+		throw new Error("Upstream returned an empty stream");
+	}
+	const reader = upstream.body.getReader();
+	const decoder = new TextDecoder();
+	const transformer = new NativeResponsesSseTransformer(restoreMap);
 	let usage: Record<string, unknown> | undefined;
 	let buffer = "";
-	stream.on("data", (chunk: Buffer | string) => {
-		buffer += chunk.toString();
+
+	const writeBlocks = (blocks: ReturnType<NativeResponsesSseTransformer["push"]>): void => {
+		for (const block of blocks) {
+			if (block.event) {
+				usage = responsesUsageFromPayload(block.event) ?? usage;
+			}
+			res.write(`${block.raw}\n\n`);
+		}
+	};
+
+	while (true) {
+		const { value, done } = await reader.read();
+		if (done) {
+			break;
+		}
+		buffer += decoder.decode(value, { stream: true });
 		buffer = buffer.replace(/\r\n/g, "\n");
 		let boundary = buffer.indexOf("\n\n");
 		while (boundary >= 0) {
 			const block = buffer.slice(0, boundary);
 			buffer = buffer.slice(boundary + 2);
-			const data = block
-				.split("\n")
-				.filter((line) => line.startsWith("data:"))
-				.map((line) => line.slice(5).trimStart())
-				.join("\n")
-				.trim();
-			if (data && data !== "[DONE]") {
-				try {
-					const event = JSON.parse(data) as Record<string, unknown>;
-					usage = responsesUsageFromPayload(event) ?? usage;
-				} catch {
-					// Ignore non-JSON SSE comments and partial upstream data.
-				}
+			if (block.trim()) {
+				writeBlocks(transformer.push(block));
 			}
 			boundary = buffer.indexOf("\n\n");
 		}
-		res.write(chunk);
-	});
-	stream.on("end", () => {
-		res.end();
-		reportResponsesUsage(options, context, endpoint, usage);
-	});
-	stream.on("error", (error) => {
-		writeError(res, error);
-	});
+	}
+	buffer += decoder.decode();
+	buffer = buffer.replace(/\r\n/g, "\n");
+	if (buffer.trim()) {
+		writeBlocks(transformer.push(buffer));
+	}
+	writeBlocks(transformer.finish());
+	res.end();
+	return usage;
 }
 
 /**
@@ -700,7 +771,11 @@ export function repairNativeResponsesRequest(
 		return { body, changed: false };
 	}
 	const repairedCallIds = repairResponsesToolCallIds(body);
-	let changed = repairedCallIds.repaired > 0 || repairedCallIds.convertedOrphanOutputs > 0;
+	const deduplicatedArguments = dedupeDuplicateArgumentKeys(body);
+	let changed =
+		repairedCallIds.repaired > 0 ||
+		repairedCallIds.convertedOrphanOutputs > 0 ||
+		deduplicatedArguments > 0;
 	for (const item of body.input) {
 		if (!isRecord(item) || item.type !== "reasoning") {
 			continue;
@@ -962,7 +1037,7 @@ async function proxyChatCompletions(
 		);
 		return;
 	}
-	const stream = transformed.body.stream !== false;
+	const stream = context.compaction ? false : transformed.body.stream !== false;
 	transformed.body.stream = stream;
 	if (stream) {
 		transformed.body.stream_options = {
@@ -980,7 +1055,12 @@ async function proxyChatCompletions(
 
 	const upstream = await fetch(joinUrl(options.upstreamBaseUrl, "chat/completions"), {
 		method: "POST",
-		headers: buildUpstreamHeaders(req.headers, context.apiKey, stream),
+			headers: buildUpstreamHeaders(
+				req.headers,
+				context.apiKey,
+				stream,
+				context.sessionId,
+			),
 		body: JSON.stringify(transformed.body),
 		signal: controller.signal,
 	});
@@ -998,6 +1078,39 @@ async function proxyChatCompletions(
 			typeof context.body.model === "string" ? context.body.model : "",
 			transformed.toolMappings,
 		);
+		if (context.compaction) {
+			const summary = summaryFromResponsesOutput(response.output);
+			if (!summary) {
+				res.writeHead(502, { "content-type": "application/json" });
+				res.end(
+					JSON.stringify({
+						error: {
+							message: "Upstream did not return a usable compaction summary",
+						},
+					}),
+				);
+				return;
+			}
+			const compacted = compactionResponse(
+				typeof context.body.model === "string" ? context.body.model : "",
+				summary,
+				isRecord(response.usage) ? response.usage : undefined,
+				typeof response.id === "string" ? response.id : undefined,
+			);
+			if (context.stream) {
+				res.writeHead(200, {
+					"content-type": "text/event-stream; charset=utf-8",
+					"cache-control": "no-cache, no-transform",
+					connection: "keep-alive",
+					"x-accel-buffering": "no",
+				});
+				res.end(compactionSse(compacted));
+			} else {
+				res.writeHead(200, { "content-type": "application/json" });
+				res.end(JSON.stringify(compacted));
+			}
+			return;
+		}
 		res.writeHead(200, { "content-type": "application/json" });
 		res.end(JSON.stringify(response));
 		return;
@@ -1204,6 +1317,7 @@ function appendResponsesInput(
 	}
 
 	const pendingToolCalls: Array<Record<string, unknown>> = [];
+	const pendingToolMedia: Array<Record<string, unknown>> = [];
 	let pendingReasoning = "";
 	let lastAssistant: Record<string, unknown> | undefined;
 	const mergeReasoning = (existing: unknown, text: string): string =>
@@ -1249,6 +1363,15 @@ function appendResponsesInput(
 		messages.push(message);
 		lastAssistant = message;
 	};
+	const flushToolMedia = (): void => {
+		if (pendingToolMedia.length === 0) {
+			return;
+		}
+		messages.push({
+			role: "user",
+			content: pendingToolMedia.splice(0),
+		});
+	};
 
 	for (const item of input) {
 		if (!isRecord(item)) {
@@ -1262,7 +1385,19 @@ function appendResponsesInput(
 			}
 			continue;
 		}
+		if (isCompactionItem(item)) {
+			flushToolMedia();
+			flushToolCalls();
+			consumePendingReasoning();
+			lastAssistant = undefined;
+			messages.push({
+				role: "user",
+				content: compactionReplayText(item),
+			});
+			continue;
+		}
 		if (type === "message") {
+			flushToolMedia();
 			flushToolCalls();
 			const role = item.role === "developer" ? "system" : String(item.role ?? "user");
 			const message: Record<string, unknown> = {
@@ -1279,7 +1414,26 @@ function appendResponsesInput(
 			messages.push(message);
 			continue;
 		}
+		if (
+			type === "input_text" ||
+			type === "output_text" ||
+			type === "input_image" ||
+			type === "image_url" ||
+			type === "input_file" ||
+			type === "input_audio"
+		) {
+			flushToolMedia();
+			flushToolCalls();
+			consumePendingReasoning();
+			lastAssistant = undefined;
+			messages.push({
+				role: "user",
+				content: convertMessageContent([item]),
+			});
+			continue;
+		}
 		if (type === "function_call" || type === "custom_tool_call") {
+			flushToolMedia();
 			const responseName = typeof item.name === "string" ? item.name : "tool";
 			const namespace = typeof item.namespace === "string" ? item.namespace : undefined;
 			const chatName =
@@ -1309,15 +1463,24 @@ function appendResponsesInput(
 			flushToolCalls();
 			const callId =
 				typeof item.call_id === "string" && item.call_id ? item.call_id : `call_${randomUUID()}`;
+			const extracted = extractChatToolOutput(item.output ?? item.result);
+			if (extracted.media.length > 0) {
+				pendingToolMedia.push(
+					{ type: "text", text: `[media output of tool call ${callId}]` },
+					...extracted.media,
+				);
+			}
 			messages.push({
 				role: "tool",
 				tool_call_id: callId,
-				content: stringifyToolOutput(item.output ?? item.result),
+				content: extracted.text,
 			});
+			continue;
 		}
 	}
 	flushToolCalls();
 	consumePendingReasoning();
+	flushToolMedia();
 }
 
 function backfillToolCallReasoningPlaceholders(messages: Array<Record<string, unknown>>): void {
@@ -1435,6 +1598,20 @@ function convertMessageContent(content: unknown): string | Array<Record<string, 
 						...(typeof part.detail === "string" ? { detail: part.detail } : {}),
 					},
 				});
+			}
+			continue;
+		}
+		if (type === "input_file") {
+			const file = responsesInputFileToChatPart(part);
+			if (file) {
+				parts.push(file);
+			}
+			continue;
+		}
+		if (type === "input_audio") {
+			const audio = responsesInputAudioToChatPart(part);
+			if (audio) {
+				parts.push(audio);
 			}
 		}
 	}
@@ -2075,6 +2252,7 @@ function looksLikeResponsesUsage(value: Record<string, unknown>): boolean {
 async function readUpstreamJsonWithUsage(
 	res: http.ServerResponse,
 	upstream: Response,
+	transform?: (payload: Record<string, unknown>) => boolean,
 ): Promise<Record<string, unknown>> {
 	const text = await upstream.text();
 	let payload: Record<string, unknown> = {};
@@ -2087,10 +2265,11 @@ async function readUpstreamJsonWithUsage(
 		res.end(text);
 		return {};
 	}
+	const changed = transform?.(payload) === true;
 	res.writeHead(upstream.status, {
 		"content-type": upstream.headers.get("content-type") ?? "application/json",
 	});
-	res.end(text);
+	res.end(changed ? JSON.stringify(payload) : text);
 	return payload;
 }
 
@@ -2278,6 +2457,7 @@ function buildUpstreamHeaders(
 	headers: http.IncomingHttpHeaders,
 	apiKey: string,
 	stream: boolean,
+	sessionId?: string,
 ): Record<string, string> {
 	const result: Record<string, string> = {
 		authorization: `Bearer ${apiKey}`,
@@ -2289,8 +2469,12 @@ function buildUpstreamHeaders(
 		"openai-beta",
 		"x-request-id",
 		"x-client-request-id",
+		"session_id",
+		"x-session-id",
 		"session-id",
 		"thread-id",
+		"x-claude-code-session-id",
+		"claude-code-session-id",
 		"originator",
 	];
 	for (const name of passthrough) {
@@ -2299,10 +2483,7 @@ function buildUpstreamHeaders(
 			result[name] = value;
 		}
 	}
-	const opencodeSession =
-		headerValue(headers["x-opencode-session"]) ??
-		headerValue(headers["session-id"]) ??
-		headerValue(headers["thread-id"]);
+	const opencodeSession = sessionId?.trim() || undefined;
 	if (opencodeSession) {
 		result["x-opencode-session"] = opencodeSession;
 	}

@@ -21,6 +21,10 @@
 | `src/proxyController.ts` | 常驻本地代理生命周期、provider token 轮换与端口切换 |
 | `src/proxy/server.ts` | 回环 HTTP 服务、Responses 转发、Chat Completions 转换 |
 | `src/proxy/messages.ts` | Anthropic Messages 转换与 thinking 块处理 |
+| `src/proxy/responsesRepair.ts` | namespace 工具展开/还原、重复参数合并、迟到 SSE 参数整流 |
+| `src/proxy/session.ts` | 多来源会话 ID 提取与稳定会话指纹 |
+| `src/proxy/media.ts` | 文件、PDF、音频与工具媒体转换 |
+| `src/proxy/compaction.ts` | Chat/Anthropic 本地压缩摘要信封与重放 |
 | `src/statusBar.ts` | 套餐额度状态栏项与轮询 |
 | `src/goUsage.ts` | `/usage` 拉取、宽容解析、缓存与倒计时格式 |
 | `src/usageStats.ts` | 不依赖 `vscode` 的 usage 归一化、聚合、趋势和缓存骤降判定 |
@@ -119,7 +123,7 @@ Codex 自带选择器会通过 app-server 更新当前线程，因此已列出�
 
 | 模型协议 | 上游路径 | 处理 |
 |---|---|---|
-| `responses` | `/responses` | 修复 `summary_text` / `reasoning_text` 后原样流式转发 |
+| `responses` | `/responses` | 修复 reasoning、工具历史、重复参数、namespace 工具和迟到流式参数后转发 |
 | `chat` | `/chat/completions` | 请求与 SSE 响应双向转换，包括工具调用 |
 | `anthropic` | `/messages` | 请求与 SSE 响应双向转换，包括 thinking 块与工具调用 |
 
@@ -131,16 +135,16 @@ DeepSeek 的别名规则定义在 `protocolVariants.ts`：
 - Responses 别名：`deepseek-v4.1-flash-responses`、`deepseek-v4-pro-responses`。
 - Anthropic 别名：`deepseek-v4.1-flash-anthropic`、`deepseek-v4-pro-anthropic`。
 
-这些别名经过真实 Codex 两轮对话和 shell 工具调用验证。OpenCode Go 尚未实现 DeepSeek 的 `/responses/compact`，因此 Responses 别名不能用于远程压缩。
+这些别名经过真实 Codex 两轮对话和 shell 工具调用验证。OpenCode Go 尚未实现 DeepSeek 的原生 `/responses/compact`；Chat 和 Anthropic 别名使用本地摘要回退。
 
 ### 认证与请求限制
 
 - 请求必须来自回环地址。
 - `Authorization` Bearer 必须与从上游密钥派生出的本地代理 token 一致。
 - 转发到 OpenCode Go 时，代理用 SecretStorage 中的真实上游密钥重写 `Authorization`。
-- Codex 的 `session-id` / `thread-id` 会同步写为 `x-opencode-session`，满足 OpenCode 新路由对会话标识的要求；调用方已有的 `x-opencode-session` 优先。
-- 请求体上限为 32 MiB。
-- 非 `responses` 模型不支持远程压缩，`/responses/compact` 或 compaction trigger 返回 `501`；DeepSeek 的 Responses 别名也会被上游以 `404` 拒绝。
+- 会话 ID 依次读取 `x-opencode-session`、`session_id`、`x-session-id`、`session-id`、`thread-id`、Claude Code 会话头与 metadata。全部缺失时，使用 instructions 和首条 user 消息生成稳定指纹，避免每次请求拆散 OpenCode 路由与提示缓存。
+- 请求体上限为 128 MiB，以容纳 PDF、图片和工具媒体。
+- Chat Completions 与 Anthropic Messages 的 `/responses/compact` 和 compaction trigger 使用本地摘要回退；原生 Responses 压缩仍原样转发。
 
 ### Responses 修复
 
@@ -149,9 +153,20 @@ OpenCode Go 的思考模型要求回传原始 `reasoning_text`。Codex 可能只
 - 把 `summary_text` 改成 `reasoning_text`；
 - 或在 `content` 为空时从 `summary` 重建 `reasoning_text`。
 
+原生 Responses 还可能携带 Codex 私有的 namespace 工具。代理在转发前建立还原映射，把 namespace 子工具提升为确定性的顶层函数名，并同步改写历史 `function_call` 和 `tool_choice`；响应 JSON 与 SSE 返回前再恢复原始 `{name, namespace}`。没有 namespace 的请求不会改写，普通请求前缀保持缓存友好。
+
+历史 `function_call.arguments` 中的重复 JSON 键会按“后值覆盖”合并，只在检测到重复键时重写。部分上游会把空的 `function_call_arguments.done` / `output_item.done` 提前发出，SSE 整流器会暂时保留这些事件，等参数 delta 或最终 `response.completed` 到达后再补全并释放。
+
 工具调用历史还会经过 `call_id` 归一化。Codex 可能回放上游曾经返回的空 `call_id`；OpenCode Go 会在推理前用 `input[N].call_id: expected a non-empty string` 拒绝整个请求。代理按 function / custom / local shell / computer 工具族匹配调用项与结果项：优先沿用已有的有效 ID；真正成对的空 ID 调用/结果使用由条目内容派生的确定性 `call_...` ID。不能使用随机 UUID，否则同一段历史在后续请求中会得到不同 ID，导致整段前缀缓存失效。
 
 新版 Codex Desktop 还可能注入没有对应 `function_call` 的 `function_call_output`，例如 `codex_apps_open_page` / `codex_apps_selected_page_part_*` 页面快照。代理不会给这类孤儿结果伪造工具 ID，而是暂存到当前工具结果批次结束后，降级为带 `[tool result without a matching tool call]` 标记的普通 user 消息，保留内容并避免生成非法 `tool, user, tool` 顺序。该策略参考 cc-switch 的 `codex_chat_tool_history` / `transform_codex_chat` 实现。
+
+### 多模态与压缩
+
+- Chat 转换保留顶层 `input_file`、`input_audio`、图片和文件引用；工具结果中的图片、文件、音频会移到紧随工具批次的 user 消息，避免被字符串化后静默丢失。
+- Anthropic 转换把 PDF/文件转换为 `document` 块，并允许 `tool_result.content` 直接携带 text、image 和 document 块。
+- Chat/Anthropic 的压缩请求改写成普通 handoff 摘要请求，移除 tools，强制该次上游请求为非流式；摘要完成后包装为 `compaction` 条目，即使 Codex 请求的是 SSE 也生成标准 Responses SSE 外壳。后续轮次会把该条目解码成普通 user 摘要文本。
+- 原生 Responses 压缩仍直接转发，不经过本地摘要。
 
 ### Chat 历史恢复
 
@@ -274,5 +289,5 @@ macOS 或 Linux 将路径改为 `./extension.vsix`。终端找不到 `code` 时�
 - 未知模型的协议是启发式推断，界面会标记 `assumed protocol`。
 - 新目录或目录内容变化后，Codex app-server 需要重启或重载窗口才能读取。
 - 若目录同步在原本没有 `config.toml` 的机器上创建了配置，随后 `codex doctor` 拒绝该配置，当前实现会恢复旧目录，但不会删除这次新建的 `config.toml`。这是一个待修复的回滚边界。
-- Chat Completions 与 Anthropic Messages 模型不支持远程压缩。
+- Chat Completions 与 Anthropic Messages 使用本地压缩摘要，不等同于上游原生压缩条目；跨供应商时可读性仍受代理信封格式限制。
 - 地区限制不是协议属性，模型仍会列出，实际调用时由网关返回错误。

@@ -4,9 +4,17 @@ import * as http from "node:http";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { repairNativeResponsesRequest, responsesToChatRequest, startLocalProxy } = require(
-	"../out/proxy/index.js",
-);
+const {
+	decodeCompactionSummary,
+	dedupeDuplicateArgumentKeys,
+	encodeCompactionSummary,
+	flattenNativeNamespaces,
+	repairNativeResponsesRequest,
+	replayOwnCompactionItems,
+	responsesToChatRequest,
+	restoreResponseNamespaces,
+	startLocalProxy,
+} = require("../out/proxy/index.js");
 const { deriveProxyToken } = require("../out/proxyToken.js");
 const { setExtensionVersion } = require("../out/utils.js");
 
@@ -25,6 +33,24 @@ test("local proxy exposes a health endpoint for cross-window reuse", async () =>
 		const response = await fetch(`${proxy.baseUrl}/health`);
 		assert.equal(response.status, 200);
 		assert.deepEqual(await response.json(), { status: "ok" });
+	} finally {
+		await proxy.close();
+	}
+});
+
+test("local proxy health echoes the loopback nonce", async () => {
+	const proxy = await startLocalProxy({
+		port: 0,
+		upstreamBaseUrl: "http://127.0.0.1:1/v1",
+		resolveApiKey: async () => "test-key",
+	});
+	try {
+		const nonce = "probe-nonce-1";
+		const response = await fetch(`${proxy.baseUrl}/health`, {
+			headers: { "x-codexgo-loopback-probe": nonce },
+		});
+		assert.equal(response.status, 200);
+		assert.equal(response.headers.get("x-codexgo-loopback-probe"), nonce);
 	} finally {
 		await proxy.close();
 	}
@@ -149,6 +175,117 @@ test("repairNativeResponsesRequest defers an orphan until parallel tool outputs 
 	assert.equal(body.input[4].role, "user");
 });
 
+test("flattenNativeNamespaces rewrites tools, history and tool_choice", () => {
+	const body = {
+		tools: [
+			{
+				type: "namespace",
+				name: "mcp__files__",
+				tools: [
+					{ type: "function", name: "read", parameters: { type: "object" } },
+					{ type: "function", name: "write", parameters: { type: "object" } },
+				],
+			},
+		],
+		input: [
+			{
+				type: "function_call",
+				name: "read",
+				namespace: "mcp__files__",
+				call_id: "call_1",
+				arguments: "{}",
+			},
+		],
+		tool_choice: { type: "function", name: "read", namespace: "mcp__files__" },
+	};
+	const restoreMap = flattenNativeNamespaces(body);
+	assert.equal(body.tools.length, 2);
+	assert.equal(body.tools[0].type, "function");
+	assert.equal(body.tools[0].name, "mcp__files____read");
+	assert.equal(body.input[0].name, "mcp__files____read");
+	assert.equal("namespace" in body.input[0], false);
+	assert.deepEqual(body.tool_choice, { type: "function", name: "mcp__files____read" });
+	assert.equal(restoreMap.get("mcp__files____read").namespace, "mcp__files__");
+
+	const response = {
+		output: [
+			{
+				type: "function_call",
+				name: "mcp__files____read",
+				call_id: "call_1",
+				arguments: "{}",
+			},
+		],
+	};
+	assert.equal(restoreResponseNamespaces(response, restoreMap), true);
+	assert.equal(response.output[0].name, "read");
+	assert.equal(response.output[0].namespace, "mcp__files__");
+});
+
+test("flattenNativeNamespaces rejects ambiguous flattened names", () => {
+	const body = {
+		tools: [
+			{ type: "function", name: "mcp__files____read", parameters: {} },
+			{
+				type: "namespace",
+				name: "mcp__files__",
+				tools: [{ type: "function", name: "read", parameters: {} }],
+			},
+		],
+	};
+	assert.throws(() => flattenNativeNamespaces(body), /collides/);
+});
+
+test("dedupeDuplicateArgumentKeys merges nested duplicates with last value wins", () => {
+	const body = {
+		input: [
+			{
+				type: "function_call",
+				name: "exec",
+				call_id: "call_1",
+				arguments: '{"time":null,"nested":{"a":1,"a":2},"time":"later"}',
+			},
+		],
+	};
+	assert.equal(dedupeDuplicateArgumentKeys(body), 1);
+	assert.equal(
+		body.input[0].arguments,
+		'{"time":"later","nested":{"a":2}}',
+	);
+});
+
+test("dedupeDuplicateArgumentKeys does not rewrite well-formed arguments", () => {
+	const argumentsText = '{ "time": null, "cmd": "echo hi" }';
+	const body = {
+		input: [
+			{
+				type: "function_call",
+				name: "exec",
+				call_id: "call_1",
+				arguments: argumentsText,
+			},
+		],
+	};
+	assert.equal(dedupeDuplicateArgumentKeys(body), 0);
+	assert.equal(body.input[0].arguments, argumentsText);
+});
+
+test("replayOwnCompactionItems converts proxy summaries for native Responses", () => {
+	const body = {
+		input: [
+			{
+				type: "compaction",
+				id: "cmp_1",
+				encrypted_content: encodeCompactionSummary("Resume from here."),
+			},
+		],
+	};
+	assert.equal(replayOwnCompactionItems(body), 1);
+	assert.equal(body.input[0].type, "message");
+	assert.equal(body.input[0].role, "user");
+	assert.match(body.input[0].content[0].text, /Resume from here\./);
+});
+
 test("native Responses proxy repairs blank tool call ids before forwarding", async () => {
 	const seen = [];
 	const upstream = http.createServer((req, res) => {
@@ -192,6 +329,232 @@ test("native Responses proxy repairs blank tool call ids before forwarding", asy
 		const callId = seen[0].input[0].call_id;
 		assert.match(callId, /^call_/);
 		assert.equal(seen[0].input[1].call_id, callId);
+	} finally {
+		await proxy.close();
+		await close(upstream);
+	}
+});
+
+test("native Responses proxy flattens namespace tools and restores response names", async () => {
+	const seen = [];
+	const upstream = http.createServer((req, res) => {
+		const chunks = [];
+		req.on("data", (chunk) => chunks.push(chunk));
+		req.on("end", () => {
+			seen.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+			res.writeHead(200, { "content-type": "application/json" });
+			res.end(
+				JSON.stringify({
+					id: "resp_namespace",
+					object: "response",
+					status: "completed",
+					output: [
+						{
+							id: "fc_namespace",
+							type: "function_call",
+							call_id: "call_1",
+							name: "mcp__files____read",
+							arguments: "{}",
+						},
+					],
+					usage: null,
+				}),
+			);
+		});
+	});
+	const upstreamPort = await listen(upstream);
+	const proxy = await startLocalProxy({
+		port: 0,
+		upstreamBaseUrl: `http://127.0.0.1:${upstreamPort}/v1`,
+		resolveApiKey: async () => "test-key",
+		resolveWireApi: () => "responses",
+	});
+	try {
+		const response = await fetch(`${proxy.baseUrl}/responses`, {
+			method: "POST",
+			headers: { authorization: "Bearer test-key", "content-type": "application/json" },
+			body: JSON.stringify({
+				model: "grok-4.7",
+				stream: false,
+				tools: [
+					{
+						type: "namespace",
+						name: "mcp__files__",
+						tools: [{ type: "function", name: "read", parameters: { type: "object" } }],
+					},
+				],
+				input: [{ type: "message", role: "user", content: "read a file" }],
+			}),
+		});
+		assert.equal(response.status, 200);
+		assert.equal(seen[0].tools[0].type, "function");
+		assert.equal(seen[0].tools[0].name, "mcp__files____read");
+		const payload = await response.json();
+		assert.equal(payload.output[0].name, "read");
+		assert.equal(payload.output[0].namespace, "mcp__files__");
+	} finally {
+		await proxy.close();
+		await close(upstream);
+	}
+});
+
+test("native Responses proxy repairs late arguments before tool completion", async () => {
+	const upstream = http.createServer((req, res) => {
+		req.resume();
+		req.on("end", () => {
+			res.writeHead(200, { "content-type": "text/event-stream" });
+			res.end(
+				[
+					'event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":0,"item":{"id":"fc_late","type":"function_call","call_id":"call_1","name":"mcp__files____read","arguments":""}}\n\n',
+					'event: response.function_call_arguments.done\ndata: {"type":"response.function_call_arguments.done","item_id":"fc_late","output_index":0,"arguments":""}\n\n',
+					'event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":0,"item":{"id":"fc_late","type":"function_call","call_id":"call_1","name":"mcp__files____read","arguments":""}}\n\n',
+					'event: response.function_call_arguments.delta\ndata: {"type":"response.function_call_arguments.delta","item_id":"fc_late","output_index":0,"delta":"{\\"path\\":\\"README.md\\"}"}\n\n',
+					'event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_late","status":"completed","output":[{"id":"fc_late","type":"function_call","call_id":"call_1","name":"mcp__files____read","arguments":"{\\"path\\":\\"README.md\\"}"}],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}\n\n',
+				].join(""),
+			);
+		});
+	});
+	const upstreamPort = await listen(upstream);
+	const proxy = await startLocalProxy({
+		port: 0,
+		upstreamBaseUrl: `http://127.0.0.1:${upstreamPort}/v1`,
+		resolveApiKey: async () => "test-key",
+		resolveWireApi: () => "responses",
+	});
+	try {
+		const response = await fetch(`${proxy.baseUrl}/responses`, {
+			method: "POST",
+			headers: { authorization: "Bearer test-key", "content-type": "application/json" },
+			body: JSON.stringify({
+				model: "grok-4.7",
+				stream: true,
+				tools: [
+					{
+						type: "namespace",
+						name: "mcp__files__",
+						tools: [{ type: "function", name: "read", parameters: { type: "object" } }],
+					},
+				],
+				input: [{ type: "message", role: "user", content: "read a file" }],
+			}),
+		});
+		assert.equal(response.status, 200);
+		const text = await response.text();
+		const deltas = [
+			...text.matchAll(/event: response\.function_call_arguments\.delta/g),
+		];
+		const doneIndex = text.indexOf('"type":"response.function_call_arguments.done"');
+		const deltaIndex = text.indexOf('"type":"response.function_call_arguments.delta"');
+		assert.equal(deltas.length, 1);
+		assert.ok(deltaIndex >= 0 && doneIndex > deltaIndex);
+		assert.match(text, /"arguments":"\{\\"path\\":\\"README.md\\"\}"/);
+		assert.match(text, /"name":"read"/);
+		assert.match(text, /"namespace":"mcp__files__"/);
+		assert.match(text, /response\.completed/);
+	} finally {
+		await proxy.close();
+		await close(upstream);
+	}
+});
+
+test("chat proxy creates and replays a local compaction summary", async () => {
+	const seen = [];
+	const upstream = http.createServer((req, res) => {
+		const chunks = [];
+		req.on("data", (chunk) => chunks.push(chunk));
+		req.on("end", () => {
+			seen.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+			res.writeHead(200, { "content-type": "application/json" });
+			if (seen.length === 1) {
+				res.end(
+					JSON.stringify({
+						id: "chatcmpl_compact",
+						choices: [
+							{
+								message: {
+									role: "assistant",
+									content: "Compacted progress and next steps.",
+								},
+								finish_reason: "stop",
+							},
+						],
+						usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 },
+					}),
+				);
+				return;
+			}
+			res.end(
+				JSON.stringify({
+					id: "chatcmpl_after_compact",
+					choices: [
+						{
+							message: { role: "assistant", content: "Continued." },
+							finish_reason: "stop",
+						},
+					],
+					usage: {},
+				}),
+			);
+		});
+	});
+	const upstreamPort = await listen(upstream);
+	const proxy = await startLocalProxy({
+		port: 0,
+		upstreamBaseUrl: `http://127.0.0.1:${upstreamPort}/v1`,
+		resolveApiKey: async () => "test-key",
+		resolveWireApi: () => "chat",
+	});
+	try {
+		const compactResponse = await fetch(`${proxy.baseUrl}/responses/compact`, {
+			method: "POST",
+			headers: { authorization: "Bearer test-key", "content-type": "application/json" },
+			body: JSON.stringify({
+				model: "glm-5.3",
+				stream: true,
+				tools: [{ type: "function", name: "exec", parameters: {} }],
+				input: [
+					{ type: "message", role: "user", content: "do the work" },
+					{ type: "message", role: "assistant", content: "working" },
+					{ type: "compaction_trigger" },
+				],
+			}),
+		});
+		assert.equal(compactResponse.status, 200);
+		const compactText = await compactResponse.text();
+		const completed = parseSseEvent(compactText, "response.completed");
+		assert.ok(completed);
+		const compaction = completed.response.output.find(
+			(item) => item.type === "compaction",
+		);
+		assert.ok(compaction);
+		assert.equal(
+			decodeCompactionSummary(compaction.encrypted_content),
+			"Compacted progress and next steps.",
+		);
+		assert.equal(seen[0].stream, false);
+		assert.equal("tools" in seen[0], false);
+		assert.match(seen[0].messages.at(-1).content, /CONTEXT CHECKPOINT COMPACTION/);
+
+		const continued = await fetch(`${proxy.baseUrl}/responses`, {
+			method: "POST",
+			headers: { authorization: "Bearer test-key", "content-type": "application/json" },
+			body: JSON.stringify({
+				model: "glm-5.3",
+				stream: false,
+				input: [
+					compaction,
+					{ type: "message", role: "user", content: "continue from the summary" },
+				],
+			}),
+		});
+		assert.equal(continued.status, 200);
+		assert.ok(
+			seen[1].messages.some(
+				(message) =>
+					typeof message.content === "string" &&
+					message.content.includes("Compacted progress and next steps."),
+			),
+		);
 	} finally {
 		await proxy.close();
 		await close(upstream);
@@ -309,6 +672,86 @@ test("responsesToChatRequest flattens namespaced tools and preserves reasoning",
 	assert.equal(toolMessage.tool_calls[0].function.name, "functions__exec");
 	assert.equal(body.messages.at(-1).role, "tool");
 	assert.equal(body.messages.at(-1).content, "hi");
+});
+
+test("responsesToChatRequest preserves input_file and input_audio parts", () => {
+	const { body } = responsesToChatRequest({
+		model: "glm-5.3",
+		input: [
+			{
+				type: "message",
+				role: "user",
+				content: [
+					{ type: "input_text", text: "inspect these" },
+					{
+						type: "input_file",
+						filename: "report.pdf",
+						file_data: "data:application/pdf;base64,SGVsbG8=",
+					},
+					{
+						type: "input_audio",
+						input_audio: { data: "UklGRg==", format: "wav" },
+					},
+				],
+			},
+		],
+	});
+	assert.deepEqual(body.messages[0].content, [
+		{ type: "text", text: "inspect these" },
+		{
+			type: "file",
+			file: {
+				file_data: "data:application/pdf;base64,SGVsbG8=",
+				filename: "report.pdf",
+			},
+		},
+		{
+			type: "input_audio",
+			input_audio: { data: "UklGRg==", format: "wav" },
+		},
+	]);
+});
+
+test("responsesToChatRequest moves tool media into a following user message", () => {
+	const { body } = responsesToChatRequest({
+		model: "glm-5.3",
+		input: [
+			{ type: "message", role: "user", content: "inspect the screenshot" },
+			{
+				type: "function_call",
+				call_id: "call_media",
+				name: "view_image",
+				arguments: "{}",
+			},
+			{
+				type: "function_call_output",
+				call_id: "call_media",
+				output: [
+					{ type: "input_text", text: "Rendered page" },
+					{
+						type: "input_image",
+						image_url: "data:image/png;base64,aW1hZ2U=",
+					},
+				],
+			},
+			{ type: "message", role: "user", content: "what changed?" },
+		],
+	});
+	const tool = body.messages.find((message) => message.role === "tool");
+	assert.equal(tool.content, "Rendered page");
+	const mediaMessage = body.messages.find(
+		(message) =>
+			message.role === "user" &&
+			Array.isArray(message.content) &&
+			message.content.some((part) => part.type === "image_url"),
+	);
+	assert.ok(mediaMessage);
+	assert.deepEqual(mediaMessage.content[0], {
+		type: "text",
+		text: "[media output of tool call call_media]",
+	});
+	assert.equal(mediaMessage.content[1].image_url.url, "data:image/png;base64,aW1hZ2U=");
+	assert.equal(body.messages.at(-1).content, "what changed?");
 });
 
 test("responsesToChatRequest attaches reasoning that arrives after assistant text", () => {
@@ -874,6 +1317,118 @@ test("native proxy repairs reasoning and forwards session headers", async () => 
 	}
 });
 
+test("native proxy derives a stable OpenCode session when the client omits one", async () => {
+	const seen = [];
+	const upstream = http.createServer((req, res) => {
+		req.resume();
+		req.on("end", () => {
+			seen.push(req.headers["x-opencode-session"]);
+			res.writeHead(200, { "content-type": "application/json" });
+			res.end(
+				JSON.stringify({
+					id: `resp_session_${seen.length}`,
+					object: "response",
+					status: "completed",
+					output: [],
+					usage: null,
+				}),
+			);
+		});
+	});
+	const upstreamPort = await listen(upstream);
+	const proxy = await startLocalProxy({
+		port: 0,
+		upstreamBaseUrl: `http://127.0.0.1:${upstreamPort}/v1`,
+		resolveApiKey: async () => "test-key",
+		resolveWireApi: () => "responses",
+	});
+	try {
+		const request = (turns, requestId) =>
+			fetch(`${proxy.baseUrl}/responses`, {
+				method: "POST",
+				headers: {
+					authorization: "Bearer test-key",
+					"content-type": "application/json",
+					"x-client-request-id": requestId,
+				},
+				body: JSON.stringify({
+					model: "grok-4.7",
+					stream: false,
+					instructions: "Stable instructions",
+					input: turns,
+				}),
+			});
+		const firstUser = { type: "message", role: "user", content: "first question" };
+		assert.equal((await request([firstUser], "request-1")).status, 200);
+		assert.equal(
+			(
+				await request(
+					[
+						firstUser,
+						{ type: "message", role: "assistant", content: "answer" },
+						{ type: "message", role: "user", content: "follow up" },
+					],
+					"request-2",
+				)
+			).status,
+			200,
+		);
+		assert.match(seen[0], /^codexgo-[a-f0-9]{32}$/);
+		assert.equal(seen[1], seen[0]);
+	} finally {
+		await proxy.close();
+		await close(upstream);
+	}
+});
+
+test("native proxy preserves x-session-id and maps it to x-opencode-session", async () => {
+	const seen = [];
+	const upstream = http.createServer((req, res) => {
+		req.resume();
+		req.on("end", () => {
+			seen.push(req.headers);
+			res.writeHead(200, { "content-type": "application/json" });
+			res.end(
+				JSON.stringify({
+					id: "resp_x_session",
+					object: "response",
+					status: "completed",
+					output: [],
+					usage: null,
+				}),
+			);
+		});
+	});
+	const upstreamPort = await listen(upstream);
+	const proxy = await startLocalProxy({
+		port: 0,
+		upstreamBaseUrl: `http://127.0.0.1:${upstreamPort}/v1`,
+		resolveApiKey: async () => "test-key",
+		resolveWireApi: () => "responses",
+	});
+	try {
+		const response = await fetch(`${proxy.baseUrl}/responses`, {
+			method: "POST",
+			headers: {
+				authorization: "Bearer test-key",
+				"content-type": "application/json",
+				"x-session-id": "codex-x-session",
+			},
+			body: JSON.stringify({
+				model: "grok-4.7",
+				stream: false,
+				input: [{ type: "message", role: "user", content: "hi" }],
+			}),
+		});
+		assert.equal(response.status, 200);
+		assert.equal(seen[0]["x-session-id"], "codex-x-session");
+		assert.equal(seen[0]["x-opencode-session"], "codex-x-session");
+	} finally {
+		await proxy.close();
+		await close(upstream);
+	}
+});
+
 test("chat proxy restores a no-tool assistant turn from previous_response_id", async () => {
 	const seen = [];
 	const upstream = http.createServer((req, res) => {
@@ -1157,6 +1712,26 @@ test("proxy model routes rewrite aliases and select the requested protocol", asy
 		await close(upstream);
 	}
 });
+
+function parseSseEvent(text, eventName) {
+	for (const block of text.split("\n\n")) {
+		const event = block
+			.split("\n")
+			.find((line) => line.startsWith("event:"))
+			?.slice(6)
+			.trim();
+		if (event !== eventName) {
+			continue;
+		}
+		const data = block
+			.split("\n")
+			.filter((line) => line.startsWith("data:"))
+			.map((line) => line.slice(5).trimStart())
+			.join("\n");
+		return JSON.parse(data);
+	}
+	return undefined;
+}
 
 function listen(server) {
 	return new Promise((resolve, reject) => {

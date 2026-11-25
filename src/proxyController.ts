@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import * as vscode from "vscode";
 import {
 	ApiKeyContext,
@@ -32,6 +33,7 @@ interface LocalProxyStatus {
 const DEFAULT_PROXY_PORT = 15722;
 const MIN_PROXY_PORT = 1024;
 const MAX_PROXY_PORT = 65535;
+const LOOPBACK_PROBE_HEADER = "x-codexgo-loopback-probe";
 
 let extensionContext: vscode.ExtensionContext | undefined;
 let proxyServer: LocalProxyServer | undefined;
@@ -146,15 +148,22 @@ async function isProxyReachable(): Promise<boolean> {
 		return true;
 	}
 	try {
+		const nonce = randomUUID();
 		const response = await fetch(
 			`${proxyBaseUrl(getConfiguredPort())}/health`,
-			{ signal: AbortSignal.timeout(1_500) },
+			{
+				headers: { [LOOPBACK_PROBE_HEADER]: nonce },
+				signal: AbortSignal.timeout(1_500),
+			},
 		);
 		if (!response.ok) {
 			return false;
 		}
 		const payload = (await response.json()) as { status?: unknown };
-		return payload.status === "ok";
+		return (
+			payload.status === "ok" &&
+			response.headers.get(LOOPBACK_PROBE_HEADER) === nonce
+		);
 	} catch {
 		return false;
 	}

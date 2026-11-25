@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const {
+	decodeCompactionSummary,
 	decodeAnthropicThinkingBlock,
 	encodeAnthropicThinkingBlock,
 	responsesToAnthropicRequest,
@@ -90,6 +91,62 @@ test("responsesToAnthropicRequest converts system, tools, thinking and tool hist
 	assert.equal(messages[2].role, "user");
 	assert.equal(messages[2].content[0].type, "tool_result");
 	assert.equal(messages[2].content[0].tool_use_id, "call_1");
+});
+
+test("responsesToAnthropicRequest preserves PDF and tool image content", () => {
+	const transformed = responsesToAnthropicRequest({
+		model: "claude-haiku-5-5",
+		input: [
+			{
+				type: "message",
+				role: "user",
+				content: [
+					{ type: "input_text", text: "inspect the report" },
+					{
+						type: "input_file",
+						filename: "report.pdf",
+						file_data: "data:application/pdf;base64,SGVsbG8=",
+					},
+				],
+			},
+			{
+				type: "function_call",
+				call_id: "call_image",
+				name: "view_image",
+				arguments: "{}",
+			},
+			{
+				type: "function_call_output",
+				call_id: "call_image",
+				output: [
+					{ type: "input_text", text: "Rendered page" },
+					{
+						type: "input_image",
+						image_url: "data:image/png;base64,aW1hZ2U=",
+					},
+				],
+			},
+		],
+	});
+	const firstMessage = transformed.body.messages[0];
+	assert.deepEqual(firstMessage.content[1], {
+		type: "document",
+		source: { type: "base64", media_type: "application/pdf", data: "SGVsbG8=" },
+		title: "report.pdf",
+	});
+	const toolResult = transformed.body.messages.at(-1).content[0];
+	assert.equal(toolResult.type, "tool_result");
+	assert.deepEqual(toolResult.content, [
+		{ type: "text", text: "Rendered page" },
+		{
+			type: "image",
+			source: {
+				type: "base64",
+				media_type: "image/png",
+				data: "aW1hZ2U=",
+			},
+		},
+	]);
 });
 
 test("Claude Haiku uses adaptive thinking and output_config effort", () => {
@@ -364,6 +421,68 @@ test("Anthropic Messages proxy converts streaming thinking, text and tools", asy
 			block_binding: { prefix_mismatch_behavior: "drop_block" },
 		});
 		assert.deepEqual(seen[0].body.output_config, { effort: "high" });
+	} finally {
+		await proxy.close();
+		await close(upstream);
+	}
+});
+
+test("Anthropic Messages proxy creates a local compaction summary", async () => {
+	const seen = [];
+	const upstream = http.createServer((req, res) => {
+		const chunks = [];
+		req.on("data", (chunk) => chunks.push(chunk));
+		req.on("end", () => {
+			seen.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+			res.writeHead(200, { "content-type": "application/json" });
+			res.end(
+				JSON.stringify({
+					id: "msg_compact",
+					model: "claude-haiku-5-5",
+					content: [{ type: "text", text: "Anthropic compacted summary." }],
+					stop_reason: "end_turn",
+					usage: { input_tokens: 80, output_tokens: 8 },
+				}),
+			);
+		});
+	});
+	const upstreamPort = await listen(upstream);
+	const proxy = await startLocalProxy({
+		port: 0,
+		upstreamBaseUrl: `http://127.0.0.1:${upstreamPort}/v1`,
+		resolveApiKey: async () => "test-key",
+		resolveWireApi: () => "anthropic",
+	});
+	try {
+		const response = await fetch(`${proxy.baseUrl}/responses/compact`, {
+			method: "POST",
+			headers: { authorization: "Bearer test-key", "content-type": "application/json" },
+			body: JSON.stringify({
+				model: "claude-haiku-5-5",
+				stream: true,
+				tools: [{ type: "function", name: "exec", parameters: {} }],
+				input: [
+					{ type: "message", role: "user", content: "do the work" },
+					{ type: "compaction_trigger" },
+				],
+			}),
+		});
+		assert.equal(response.status, 200);
+		const completed = parseSseEvent(await response.text(), "response.completed");
+		assert.ok(completed);
+		const compaction = completed.response.output.find(
+			(item) => item.type === "compaction",
+		);
+		assert.ok(compaction);
+		assert.equal(
+			decodeCompactionSummary(compaction.encrypted_content),
+			"Anthropic compacted summary.",
+		);
+		assert.equal(seen[0].stream, false);
+		assert.equal("tools" in seen[0], false);
+		const lastBlock = seen[0].messages.at(-1).content.at(-1);
+		assert.equal(lastBlock.type, "text");
+		assert.match(lastBlock.text, /CONTEXT CHECKPOINT COMPACTION/);
 	} finally {
 		await proxy.close();
 		await close(upstream);

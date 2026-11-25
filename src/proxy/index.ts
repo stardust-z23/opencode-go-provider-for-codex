@@ -17,6 +17,24 @@ export {
 	proxyAnthropicMessages,
 	responsesToAnthropicRequest,
 } from "./messages";
+export {
+	compactionReplayText,
+	decodeCompactionSummary,
+	encodeCompactionSummary,
+	hasCompactionTrigger,
+	isCompactionItem,
+	prepareCompactionRequest,
+	replayOwnCompactionItems,
+	summaryFromResponsesOutput,
+} from "./compaction";
+export {
+	dedupeDuplicateArgumentKeys,
+	flattenNativeNamespaces,
+	flattenNamespaceToolName,
+	NativeResponsesSseTransformer,
+	restoreResponseNamespaces,
+} from "./responsesRepair";
+export { resolveSessionId } from "./session";
 export type {
 	AnthropicProxyContext,
 	AnthropicProxyOptions,

@@ -1,6 +1,17 @@
 import { randomUUID } from "crypto";
 import * as http from "http";
 import { getUserAgent } from "../utils";
+import {
+	compactionReplayText,
+	compactionResponse,
+	compactionSse,
+	isCompactionItem,
+	summaryFromResponsesOutput,
+} from "./compaction";
+import {
+	extractAnthropicToolResult,
+	responsesInputFileToAnthropicBlock,
+} from "./media";
 
 const ANTHROPIC_VERSION = "2023-06-01";
 const ANTHROPIC_THINKING_PREFIX_V1 = "codexgo-anthropic-thinking-v1:";
@@ -19,6 +30,8 @@ export interface AnthropicProxyOptions {
 export interface AnthropicProxyContext {
 	body: Record<string, unknown>;
 	apiKey: string;
+	sessionId?: string;
+	compaction?: boolean;
 }
 
 export interface AnthropicToolMapping {
@@ -59,7 +72,7 @@ export async function proxyAnthropicMessages(
 	context: AnthropicProxyContext,
 ): Promise<void> {
 	const transformed = responsesToAnthropicRequest(context.body);
-	const stream = transformed.body.stream !== false;
+	const stream = context.compaction ? false : transformed.body.stream !== false;
 	transformed.body.stream = stream;
 	options.log?.("messages.request", {
 		model: typeof context.body.model === "string" ? context.body.model : undefined,
@@ -86,6 +99,7 @@ export async function proxyAnthropicMessages(
 			isAdaptiveThinking(transformed.body.thinking)
 				? ["thinking-binding-controls-2026-08-01"]
 				: [],
+			context.sessionId,
 		),
 		body: JSON.stringify(transformed.body),
 		signal: controller.signal,
@@ -105,6 +119,39 @@ export async function proxyAnthropicMessages(
 			typeof context.body.model === "string" ? context.body.model : "",
 			transformed.toolMappings,
 		);
+		if (context.compaction) {
+			const summary = summaryFromResponsesOutput(response.output);
+			if (!summary) {
+				res.writeHead(502, { "content-type": "application/json" });
+				res.end(
+					JSON.stringify({
+						error: {
+							message: "Upstream did not return a usable compaction summary",
+						},
+					}),
+				);
+				return;
+			}
+			const compacted = compactionResponse(
+				typeof context.body.model === "string" ? context.body.model : "",
+				summary,
+				isRecord(response.usage) ? response.usage : undefined,
+				typeof response.id === "string" ? response.id : undefined,
+			);
+			if (context.compaction && context.body.stream !== false) {
+				res.writeHead(200, {
+					"content-type": "text/event-stream; charset=utf-8",
+					"cache-control": "no-cache, no-transform",
+					connection: "keep-alive",
+					"x-accel-buffering": "no",
+				});
+				res.end(compactionSse(compacted));
+			} else {
+				res.writeHead(200, { "content-type": "application/json" });
+				res.end(JSON.stringify(compacted));
+			}
+			return;
+		}
 		res.writeHead(200, { "content-type": "application/json" });
 		res.end(JSON.stringify(response));
 		return;
@@ -384,6 +431,13 @@ function appendResponsesInput(
 		if (type === "additional_tools") {
 			continue;
 		}
+		if (isCompactionItem(item)) {
+			pushBlock(messages, "user", {
+				type: "text",
+				text: compactionReplayText(item),
+			});
+			continue;
+		}
 		if (type === "compaction_trigger") {
 			throw new Error(
 				"Anthropic Messages remote compaction is not supported by this proxy",
@@ -454,10 +508,11 @@ function appendResponsesInput(
 			type === "custom_tool_call_output" ||
 			type === "tool_search_output"
 		) {
+			const toolResult = extractAnthropicToolResult(item.output ?? item.result);
 			pushBlock(messages, "user", {
 				type: "tool_result",
 				tool_use_id: callId(item),
-				content: stringifyToolOutput(item.output ?? item.result),
+				content: toolResult.content,
 				...(isToolError(item) ? { is_error: true } : {}),
 			});
 			continue;
@@ -473,6 +528,13 @@ function appendResponsesInput(
 			const image = imageBlockFromPart(item);
 			if (image) {
 				pushBlock(messages, "user", image);
+			}
+			continue;
+		}
+		if (type === "input_file") {
+			const document = responsesInputFileToAnthropicBlock(item);
+			if (document) {
+				pushBlock(messages, "user", document);
 			}
 		}
 	}
@@ -544,6 +606,13 @@ function contentBlocks(content: unknown): Array<Record<string, unknown>> {
 			const image = imageBlockFromPart(part);
 			if (image) {
 				blocks.push(image);
+			}
+			continue;
+		}
+		if (type === "input_file") {
+			const document = responsesInputFileToAnthropicBlock(part);
+			if (document) {
+				blocks.push(document);
 			}
 		}
 	}
@@ -877,6 +946,7 @@ function buildAnthropicHeaders(
 	apiKey: string,
 	stream: boolean,
 	extraBeta: string[] = [],
+	sessionId?: string,
 ): Record<string, string> {
 	const result: Record<string, string> = {
 		"x-api-key": apiKey,
@@ -888,8 +958,12 @@ function buildAnthropicHeaders(
 	const passthrough = [
 		"x-request-id",
 		"x-client-request-id",
+		"session_id",
+		"x-session-id",
 		"session-id",
 		"thread-id",
+		"x-claude-code-session-id",
+		"claude-code-session-id",
 		"originator",
 	];
 	for (const name of passthrough) {
@@ -921,12 +995,9 @@ function buildAnthropicHeaders(
 	if (betaValues.size > 0) {
 		result["anthropic-beta"] = [...betaValues].join(", ");
 	}
-	const sessionId =
-		result["x-opencode-session"] ??
-		result["session-id"] ??
-		result["thread-id"];
-	if (sessionId) {
-		result["x-opencode-session"] = sessionId;
+	const resolvedSessionId = sessionId?.trim() || result["x-opencode-session"];
+	if (resolvedSessionId) {
+		result["x-opencode-session"] = resolvedSessionId;
 	}
 	return result;
 }

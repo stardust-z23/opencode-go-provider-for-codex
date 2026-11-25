@@ -156,17 +156,21 @@ function runCodex(home) {
 				reject(new Error(`codex exec timed out\nstdout:\n${stdout}\nstderr:\n${stderr}`));
 			}
 		}, 30_000);
+                const maybeFinish = () => {
+                        if (
+                                (stdout + stderr).includes("First sentence. Second sentence.") &&
+                                (stdout + stderr).includes("tokens used")
+                        ) {
+                                finish(0);
+                        }
+                };
 		child.stdout.on("data", (chunk) => {
 			stdout += chunk.toString();
-			if (
-				(stdout + stderr).includes("First sentence. Second sentence.") &&
-				(stdout + stderr).includes("tokens used")
-			) {
-				finish(0);
-			}
+                        maybeFinish();
 		});
 		child.stderr.on("data", (chunk) => {
 			stderr += chunk.toString();
+                        maybeFinish();
 		});
 		child.once("error", (error) => {
 			clearTimeout(timer);

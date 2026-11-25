@@ -1,5 +1,13 @@
 # 更新日志
 
+## 0.2.15 (2026-11-25)
+
+- **补齐 Codex 请求兼容修复。** 原生 Responses 会展开 Codex 私有 namespace 工具并在响应 JSON/SSE 中还原；重复 JSON 参数键按后值覆盖合并，迟到的流式工具参数会在完成事件前补全。
+- **稳定 OpenCode 会话与缓存路由。** 会读取 `x-opencode-session`、`session_id`、`x-session-id`、`session-id`、`thread-id` 和 Claude Code/metadata 会话来源；全部缺失时生成稳定会话指纹，避免每次请求拆散路由与提示缓存。
+- **保留多模态内容。** Chat 路径支持 `input_file`、`input_audio`，工具结果中的图片、文件、音频会迁移到后续 user 消息；Anthropic 路径支持 PDF/document 和工具结果图片。
+- **增加本地压缩回退。** Chat Completions 与 Anthropic Messages 的 `/responses/compact` 和 compaction trigger 会生成代理可解码的摘要条目，后续轮次可跨协议重放；原生 Responses 压缩仍直接转发。
+- **加强多窗口代理识别。** 健康检查使用随机 nonce 回显，避免系统代理或其他本地服务误报为当前扩展的代理。
+
 ## 0.2.14 (2026-11-24)
 
 - **修复多窗口下自动同步误报代理不可用。** 当另一个 VS Code 窗口持有 `15722` 时，当前窗口会通过 `/v1/health` 检测并复用这个健康代理完成模型目录同步，不再仅因本窗口没有监听端口而跳过。旧的瞬时“代理未激活”提示也会在状态加载时清除。
