@@ -1,12 +1,13 @@
 # 更新日志
 
-## 0.2.16 (2026-11-28)
+## 0.2.17 (2026-11-28)
 
 - **新增 Claude Code 适配。** 回环代理提供原生 Anthropic Messages 直通（`/v1/messages`、`/v1/messages/count_tokens`），只改写模型、认证、`x-opencode-session` 与 UA，请求体与 SSE 原样转发；`[1m]` 标记在转发前剥离，四档别名与未识别的 Claude ID 按设置路由到 OpenCode Go 模型。
 - **接管 `~/.claude/settings.json`。** 只写自有键（`env` 中的 base URL、派生 token、四档模型、子代理模型、上下文上限与网关兼容开关，以及顶层 `modelPicker`），写入前备份、临时文件原子替换、拒绝无法解析的文件；接管时删除 `ANTHROPIC_API_KEY`，避免 Claude Code 把代理 token 当成自定义密钥。
 - **可回滚的接管。** 恢复按三方合并逐键回退，用户期间改过的键保持原样；被删除的键先写空串（Claude Code 只增量合并 `env`）再清除。经真实配置副本演练，回滚后文档与原文逐字节一致。
 - **模型列表与发现。** `modelPicker` 用 `replaceBuiltInOptions: true` 列出全部 Go 文本模型，1M 档带 `[1m]`；`CLAUDE_CODE_MAX_CONTEXT_TOKENS` 取非 1M 档的最小窗口。`GET /v1/models` 在本机按 Anthropic 形状返回同一份列表，`HEAD /api/hello` 本机应答。
-- **新增命令与设置。** 配置/刷新/恢复/诊断四个命令，以及 `codexgo.claudeCode.*` 的默认模型、各档模型、设置路径、CLI 路径、picker 替换与 `behavesAs` 开关。
+- **四个命令 + 入口。** 配置/刷新/恢复/诊断四个命令；状态栏悬停菜单与首次运行引导页都提供「配置 Claude Code」，接管后自动换成「刷新模型 / 恢复配置」。
+- **新增设置。** `codexgo.claudeCode.*` 的默认模型、各档模型、设置路径、CLI 路径、picker 替换与 `behavesAs` 开关。
 
 ## 0.2.15 (2026-11-25)
 
