@@ -385,6 +385,7 @@ const zhCN: Record<string, string> = {
 	"Removed ANTHROPIC_API_KEY so Claude Code does not treat the proxy token as a custom key.": "已移除 ANTHROPIC_API_KEY，避免 Claude Code 把代理 token 当成自定义密钥。",
 	"Claude Code 2.1.242 or newer is required for the model list, so only the role aliases were written.": "模型列表需要 Claude Code 2.1.242 或更新版本，因此只写入了四档别名。",
 	"Configure Claude Code": "配置 Claude Code",
+	"Repair Claude Code settings": "修复 Claude Code 配置",
 	"Refresh Claude Code models": "刷新 Claude Code 模型",
 	"Restore Claude Code settings": "恢复 Claude Code 配置",
 	"Claude Code diagnostics": "Claude Code 诊断",

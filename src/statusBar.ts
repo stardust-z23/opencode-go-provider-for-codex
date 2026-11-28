@@ -345,6 +345,11 @@ function appendActions(md: vscode.MarkdownString): void {
 
 	md.appendMarkdown(`\n**Claude Code**\n\n`);
 	if (globalState && isClaudeCodeConfigured(globalState)) {
+		// Keep repair reachable after the first takeover: healing a stale role
+		// model needs the full configure path, not the picker-only refresh.
+		md.appendMarkdown(
+			`[$(plug) ${l10n("Repair Claude Code settings")}](command:codexgo.configureClaudeCode)  \n`,
+		);
 		md.appendMarkdown(
 			`[$(refresh) ${l10n("Refresh Claude Code models")}](command:codexgo.refreshClaudeCodePicker)  \n`,
 		);
