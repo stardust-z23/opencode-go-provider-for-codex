@@ -65,6 +65,7 @@ const OWNED_REQUEST_HEADERS = new Set([
 	"user-agent",
 	"accept",
 	"content-type",
+	"expect",
 	"x-codexgo-loopback-probe",
 ]);
 

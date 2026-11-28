@@ -447,6 +447,50 @@ test("answers the startup probe locally instead of hanging upstream", async () =
 	}
 });
 
+test("drops Expect: 100-continue instead of failing the upstream fetch", async () => {
+	// undici rejects `Expect: 100-continue` with UND_ERR_NOT_SUPPORTED, which
+	// surfaces as a generic "fetch failed". Clients such as PowerShell send it.
+	const agent = await withProxy((req, res) => {
+		res.writeHead(200, { "content-type": "application/json" });
+		res.end(JSON.stringify({ type: "message", content: [] }));
+	});
+	try {
+		const body = JSON.stringify({
+			model: "glm-5.3",
+			max_tokens: 64,
+			messages: [{ role: "user", content: "hi" }],
+		});
+		const response = await new Promise((resolve, reject) => {
+			const request = http.request(
+				`${agent.baseUrl}/v1/messages`,
+				{
+					method: "POST",
+					headers: {
+						authorization: `Bearer ${LOCAL_TOKEN}`,
+						"content-type": "application/json",
+						"content-length": Buffer.byteLength(body),
+						expect: "100-continue",
+					},
+				},
+				(res) => {
+					const chunks = [];
+					res.on("data", (chunk) => chunks.push(chunk));
+					res.on("end", () =>
+						resolve({ status: res.statusCode, text: Buffer.concat(chunks).toString("utf8") }),
+					);
+				},
+			);
+			request.on("error", reject);
+			request.end(body);
+		});
+		assert.equal(response.status, 200, response.text);
+		assert.equal(agent.calls.length, 1);
+		assert.equal(agent.calls[0].headers.expect, undefined);
+	} finally {
+		await agent.close();
+	}
+});
+
 test("honours a base URL that already ends with /v1", async () => {
 	const agent = await withProxy((req, res) => {
 		res.writeHead(200, { "content-type": "application/json" });

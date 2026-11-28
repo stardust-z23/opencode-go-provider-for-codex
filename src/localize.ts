@@ -388,6 +388,10 @@ const zhCN: Record<string, string> = {
 	"Refresh Claude Code models": "刷新 Claude Code 模型",
 	"Restore Claude Code settings": "恢复 Claude Code 配置",
 	"Claude Code diagnostics": "Claude Code 诊断",
+	"Remove conflicting entries": "移除冲突条目",
+	"The Claude Code extension's own environment variables also set {0}.": "Claude Code 扩展自身还设置了下述环境变量：{0}。",
+	"Removed the conflicting Claude Code environment variables. Reload the window to apply it.": "已移除冲突的 Claude Code 环境变量，重载窗口后生效。",
+	"Claude Code extension environment variables": "Claude Code 扩展环境变量",
 };
 
 function isZh(): boolean {

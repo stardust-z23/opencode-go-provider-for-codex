@@ -43,6 +43,8 @@ import { isChatModel } from "./modelCenterData";
 import {
 	buildMessagesPickerRows,
 	messagesContextFloor,
+	normalizeClaudeModelId,
+	stripOneMillionMarker,
 	suggestClaudeProfile,
 	type PickerModelInput,
 } from "./modelRouting";
@@ -275,6 +277,10 @@ export async function showClaudeCodeDiagnostics(
 	lines.push(
 		`- Claude Code CLI: ${version.version ? `v${version.version}` : version.error ?? "unknown"}`,
 	);
+	const conflicts = conflictingClaudeExtensionEnv();
+	lines.push(
+		`- ${l10n("Claude Code extension environment variables")}: ${conflicts.length > 0 ? conflicts.join(", ") : "-"}`,
+	);
 	lines.push(
 		`  - modelPicker: ${supportsModelPicker(version.version) ? "supported" : "not supported"}`,
 	);
@@ -341,24 +347,6 @@ async function applyIntegration(
 			})
 		: undefined;
 
-	const env =
-		scope === "all"
-			? buildClaudeEnv({
-					baseUrl: claudeBaseUrl(auth.baseUrl),
-					proxyToken: auth.bearerToken,
-					defaultModel:
-						configuredRole("defaultModel") ?? pickPreferred(models, DEFAULT_MODEL_PREFERENCES) ?? models[0]?.id,
-					roleModels: {
-						opus: configuredRole("opusModel"),
-						sonnet: configuredRole("sonnetModel"),
-						haiku: configuredRole("haikuModel") ?? pickPreferred(models, HAIKU_MODEL_PREFERENCES),
-						fable: configuredRole("fableModel"),
-						subagent: configuredRole("subagentModel"),
-					},
-					maxContextTokens: messagesContextFloor(models),
-				})
-			: {};
-
 	const location = resolveLocation(readOwnership(context.globalState));
 	let document: ClaudeSettingsDocument;
 	try {
@@ -371,6 +359,80 @@ async function applyIntegration(
 			),
 		);
 		return;
+	}
+
+	const env: Record<string, string> = {};
+	if (scope === "all") {
+		const catalogIds = new Set(models.map((model) => model.id));
+		const catalogNames = new Map(models.map((model) => [model.id, model.name]));
+		const currentEnv = isRecord(document.document.env)
+			? document.document.env
+			: {};
+		const currentValue = (key: string): string | undefined =>
+			typeof currentEnv[key] === "string" ? (currentEnv[key] as string) : undefined;
+		/**
+		 * Three cases per role, in order: the user configured it; the file already
+		 * points at a model the catalog serves (leave it exactly as written); the
+		 * file points at something the gateway no longer serves (heal it with the
+		 * fallback so a takeover of another provider's settings still works).
+		 */
+		const planRole = (
+			setting: string,
+			key: string,
+			fallback: string | undefined,
+		): { model?: string; name?: string } => {
+			const configured = configuredRole(setting);
+			if (configured) {
+				const model = stripOneMillionMarker(configured).id;
+				return { model, name: catalogNames.get(model) };
+			}
+			if (normalizeClaudeModelId(currentValue(key), catalogIds)) {
+				return {};
+			}
+			return fallback ? { model: fallback, name: catalogNames.get(fallback) } : {};
+		};
+		const defaultModel =
+			configuredRole("defaultModel") ??
+			normalizeClaudeModelId(currentValue("ANTHROPIC_MODEL"), catalogIds) ??
+			pickPreferred(models, DEFAULT_MODEL_PREFERENCES) ??
+			models[0]?.id;
+		const haikuFallback =
+			pickPreferred(models, HAIKU_MODEL_PREFERENCES) ?? defaultModel;
+		const opus = planRole("opusModel", "ANTHROPIC_DEFAULT_OPUS_MODEL", defaultModel);
+		const sonnet = planRole("sonnetModel", "ANTHROPIC_DEFAULT_SONNET_MODEL", defaultModel);
+		const haiku = planRole("haikuModel", "ANTHROPIC_DEFAULT_HAIKU_MODEL", haikuFallback);
+		const fable = planRole(
+			"fableModel",
+			"ANTHROPIC_DEFAULT_FABLE_MODEL",
+			opus.model ?? defaultModel,
+		);
+		Object.assign(
+			env,
+			buildClaudeEnv({
+				baseUrl: claudeBaseUrl(auth.baseUrl),
+				proxyToken: auth.bearerToken,
+				defaultModel,
+				roleModels: {
+					opus: opus.model,
+					sonnet: sonnet.model,
+					haiku: haiku.model,
+					fable: fable.model,
+					subagent: planRole("subagentModel", "CLAUDE_CODE_SUBAGENT_MODEL", defaultModel).model,
+				},
+				maxContextTokens: messagesContextFloor(models),
+			}),
+		);
+		// Keep the display names of the rows we rewrote in step with their models.
+		for (const [key, plan] of [
+			["ANTHROPIC_DEFAULT_OPUS_MODEL_NAME", opus],
+			["ANTHROPIC_DEFAULT_SONNET_MODEL_NAME", sonnet],
+			["ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME", haiku],
+			["ANTHROPIC_DEFAULT_FABLE_MODEL_NAME", fable],
+		] as const) {
+			if (plan.model && plan.name) {
+				env[key] = plan.name;
+			}
+		}
 	}
 	let update: ClaudeSettingsUpdate;
 	try {
@@ -458,10 +520,26 @@ async function applyIntegration(
 			"Reload the Claude Code session or the VS Code window so Claude Code picks up the new provider settings.",
 		),
 	);
+	// The Claude Code VS Code extension can inject its own ANTHROPIC_* variables
+	// into the CLI it spawns; those survive our takeover and can add a second
+	// credential or a different base URL.
+	const conflicts = scope === "all" ? conflictingClaudeExtensionEnv() : [];
+	if (conflicts.length > 0) {
+		parts.push(
+			l10nFormat(
+				"The Claude Code extension's own environment variables also set {0}.",
+				conflicts.join(", "),
+			),
+		);
+	}
 	const reload = l10n("Reload window");
-	void vscode.window.showInformationMessage(parts.join(" "), reload).then((picked) => {
+	const removeConflicts = l10n("Remove conflicting entries");
+	const actions = conflicts.length > 0 ? [removeConflicts, reload] : [reload];
+	void vscode.window.showInformationMessage(parts.join(" "), ...actions).then((picked) => {
 		if (picked === reload) {
 			void vscode.commands.executeCommand("workbench.action.reloadWindow");
+		} else if (picked === removeConflicts) {
+			void removeClaudeExtensionEnv(conflicts);
 		}
 	});
 }
@@ -489,6 +567,78 @@ async function loadCatalogModels(): Promise<CatalogModel[]> {
 			deprecated: model.deprecated,
 			efforts: modelEfforts(model),
 		}));
+}
+
+/** `env` names the Claude Code VS Code extension may inject into its CLI. */
+const CLAUDE_EXTENSION_ENV_NAMES = [
+	"ANTHROPIC_BASE_URL",
+	"ANTHROPIC_AUTH_TOKEN",
+	"ANTHROPIC_API_KEY",
+	"ANTHROPIC_MODEL",
+	"ANTHROPIC_DEFAULT_OPUS_MODEL",
+	"ANTHROPIC_DEFAULT_SONNET_MODEL",
+	"ANTHROPIC_DEFAULT_HAIKU_MODEL",
+	"ANTHROPIC_DEFAULT_FABLE_MODEL",
+	"CLAUDE_CODE_SUBAGENT_MODEL",
+	"CLAUDE_CODE_MAX_CONTEXT_TOKENS",
+];
+
+/**
+ * `claudeCode.environmentVariables` of the Claude Code extension is applied when
+ * it spawns the CLI, so it survives this extension's takeover of
+ * `settings.json`. Report the conflicting names instead of silently fighting
+ * them: a second credential triggers Claude Code's custom-key prompt.
+ */
+export function conflictingClaudeExtensionEnv(): string[] {
+	const raw = vscode.workspace
+		.getConfiguration("claudeCode")
+		.get<unknown>("environmentVariables");
+	if (!Array.isArray(raw)) {
+		return [];
+	}
+	const names: string[] = [];
+	for (const entry of raw) {
+		if (!isRecord(entry) || typeof entry.name !== "string") {
+			continue;
+		}
+		const name = entry.name.trim();
+		if (CLAUDE_EXTENSION_ENV_NAMES.includes(name) && !names.includes(name)) {
+			names.push(name);
+		}
+	}
+	return names;
+}
+
+/** Drop the conflicting entries, keeping every unrelated one. */
+async function removeClaudeExtensionEnv(names: string[]): Promise<void> {
+	const config = vscode.workspace.getConfiguration("claudeCode");
+	const raw = config.get<unknown>("environmentVariables");
+	if (!Array.isArray(raw)) {
+		return;
+	}
+	const kept = raw.filter(
+		(entry) =>
+			!(isRecord(entry) && typeof entry.name === "string" && names.includes(entry.name.trim())),
+	);
+	try {
+		await config.update("environmentVariables", kept, vscode.ConfigurationTarget.Global);
+	} catch (error) {
+		void vscode.window.showErrorMessage(
+			l10nFormat(
+				"Claude Code settings could not be written: {0}",
+				error instanceof Error ? error.message : String(error),
+			),
+		);
+		return;
+	}
+	logger.info("claudeCode.extensionEnv.removed", { removed: names });
+	void vscode.window.showInformationMessage(
+		l10n("Removed the conflicting Claude Code environment variables. Reload the window to apply it."),
+	);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function modelEfforts(model: { capabilities?: Record<string, unknown> }): string[] | undefined {

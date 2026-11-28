@@ -1,5 +1,11 @@
 # 更新日志
 
+## 0.2.18 (2026-11-28)
+
+- **修复接管的失效档位。** 接管别人（如 DeepSeek 直连）的 `settings.json` 时，Sonnet/子代理档可能指向网关已不提供的模型（实际会返回 `isn't included in OpenCode Go`）。现在只改“当前目录不存在该模型”的档位，能用的值原样保留，并同步 `*_MODEL_NAME`。
+- **丢弃 `Expect: 100-continue`。** 该头会让 Node 的 `fetch` 直接报 `UND_ERR_NOT_SUPPORTED`（表现为 `fetch failed`），PowerShell 等客户端默认就会带。
+- **提示 Claude Code 扩展自身的环境变量。** `claudeCode.environmentVariables` 里的 `ANTHROPIC_*` 会绕过本次接管、并可能多出一个密钥；配置完成时若检测到冲突，会在提示里提供「移除冲突条目」按钮（诊断命令也会列出）。
+
 ## 0.2.17 (2026-11-28)
 
 - **新增 Claude Code 适配。** 回环代理提供原生 Anthropic Messages 直通（`/v1/messages`、`/v1/messages/count_tokens`），只改写模型、认证、`x-opencode-session` 与 UA，请求体与 SSE 原样转发；`[1m]` 标记在转发前剥离，四档别名与未识别的 Claude ID 按设置路由到 OpenCode Go 模型。

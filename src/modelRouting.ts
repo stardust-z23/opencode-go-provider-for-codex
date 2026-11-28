@@ -117,6 +117,31 @@ export function looksLikeClaudeModel(modelId: string): boolean {
 	return normalized.startsWith("claude") || normalized.includes("anthropic");
 }
 
+/**
+ * Normalize a stored model id: drop the local `[1m]` marker and report the id
+ * only when the catalog still serves it.
+ *
+ * Used to heal role keys that point at a model the account no longer has — a
+ * takeover of a settings file configured for another provider otherwise leaves
+ * `ANTHROPIC_DEFAULT_SONNET_MODEL=deepseek-v4-flash[1M]`, which the gateway
+ * rejects with "isn't included in OpenCode Go".
+ */
+export function normalizeClaudeModelId(
+	modelId: string | undefined,
+	knownModelIds: Iterable<string>,
+): string | undefined {
+	const stripped = stripOneMillionMarker(modelId ?? "").id;
+	if (!stripped) {
+		return undefined;
+	}
+	for (const known of knownModelIds) {
+		if (known === stripped) {
+			return stripped;
+		}
+	}
+	return undefined;
+}
+
 function configuredRoleModel(
 	role: ClaudeModelRole,
 	roles: RoleModelMap,

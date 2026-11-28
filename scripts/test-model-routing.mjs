@@ -12,6 +12,7 @@ const {
 	claudeRoleForModel,
 	looksLikeClaudeModel,
 	messagesContextFloor,
+	normalizeClaudeModelId,
 	resolveMessagesModel,
 	stripOneMillionMarker,
 } = require("../out/modelRouting.js");
@@ -161,6 +162,14 @@ test("an unconfigured non-Claude id is forwarded for the gateway to reject", () 
 	});
 	assert.equal(decision.source, "passthrough");
 	assert.equal(decision.upstreamModelId, "gpt-6.1-sol");
+});
+
+test("normalizeClaudeModelId heals stale role values and strips markers", () => {
+	assert.equal(normalizeClaudeModelId("deepseek-v4.1-flash[1M]", KNOWN), "deepseek-v4.1-flash");
+	assert.equal(normalizeClaudeModelId("deepseek-v4-pro[1m]", KNOWN), undefined);
+	assert.equal(normalizeClaudeModelId("deepseek-v4-flash[1M]", KNOWN), undefined);
+	assert.equal(normalizeClaudeModelId(undefined, KNOWN), undefined);
+	assert.equal(normalizeClaudeModelId("   ", KNOWN), undefined);
 });
 
 test("a role model may itself carry a [1m] marker", () => {
