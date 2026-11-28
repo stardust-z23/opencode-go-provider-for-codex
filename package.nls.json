@@ -21,6 +21,8 @@
 	"walkthrough.setApiKey.description": "Subscribe to OpenCode Go, copy your API key, and store it here.",
 	"walkthrough.syncModels.title": "Sync the models into Codex",
 	"walkthrough.syncModels.description": "Install the supported models into Codex's own model picker. The background proxy handles authentication and protocol adaptation.",
+	"walkthrough.configureClaudeCode.title": "Configure Claude Code (optional)",
+	"walkthrough.configureClaudeCode.description": "Point Claude Code at the same loopback proxy and list every OpenCode Go model in its /model picker.",
 	"config.title": "OpenCode Go for Codex",
 	"config.codexHome.desc": "Directory containing Codex's `config.toml`. Leave empty to use the `CODEX_HOME` environment variable, or `~/.codex`.",
 	"config.codexExecutable.desc": "Path to the Codex executable used to build Codex's model catalog (`codex debug models`) and to check the config still loads. Leave empty to auto-detect the Codex CLI or the binary bundled with the Codex VS Code extension.",

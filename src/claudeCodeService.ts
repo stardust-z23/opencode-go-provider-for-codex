@@ -100,7 +100,7 @@ export async function refreshClaudeCodePicker(
 export async function restoreClaudeCode(
 	context: ClaudeCodeContext,
 ): Promise<void> {
-	const ownership = readOwnership(context);
+	const ownership = readOwnership(context.globalState);
 	if (!ownership) {
 		void vscode.window.showInformationMessage(
 			l10n("No Claude Code settings were written by this extension."),
@@ -120,8 +120,7 @@ export async function restoreClaudeCode(
 		);
 		return;
 	}
-	let plan: ReturnType<typeof planClaudeRestore>;
-	try {
+	let plan: ReturnType<typeof planClaudeRestore>;	try {
 		plan = planClaudeRestore(document.document, ownership);
 	} catch (error) {
 		void vscode.window.showErrorMessage(
@@ -194,7 +193,7 @@ export async function restoreClaudeCode(
 export async function maybeRepairClaudeCodeIntegration(
 	context: ClaudeCodeContext,
 ): Promise<void> {
-	const ownership = readOwnership(context);
+	const ownership = readOwnership(context.globalState);
 	if (!ownership) {
 		return;
 	}
@@ -240,7 +239,7 @@ export async function showClaudeCodeDiagnostics(
 	context: ClaudeCodeContext,
 ): Promise<void> {
 	const lines: string[] = ["# OpenCode Go for Codex — Claude Code diagnostics", ""];
-	const ownership = readOwnership(context);
+	const ownership = readOwnership(context.globalState);
 	const location = resolveLocation(ownership);
 	lines.push(`- ${l10n("Claude Code settings path")}: \`${location.file}\``);
 	lines.push(`- ${l10n("Owned by this extension")}: ${ownership ? "yes" : "no"}`);
@@ -360,7 +359,7 @@ async function applyIntegration(
 				})
 			: {};
 
-	const location = resolveLocation(readOwnership(context));
+	const location = resolveLocation(readOwnership(context.globalState));
 	let document: ClaudeSettingsDocument;
 	try {
 		document = await readClaudeSettings(location);
@@ -394,7 +393,7 @@ async function applyIntegration(
 		return;
 	}
 
-	const previous = readOwnership(context);
+	const previous = readOwnership(context.globalState);
 	const ownership = captureClaudeOwnership(
 		document.document,
 		update,
@@ -553,12 +552,17 @@ function locationFromPath(file: string): ClaudeSettingsLocation {
 	return { dir: path.dirname(file), file };
 }
 
-function readOwnership(context: ClaudeCodeContext): ClaudeOwnership | undefined {
-	const raw = context.globalState.get<ClaudeOwnership>(OWNERSHIP_KEY);
+function readOwnership(globalState: vscode.Memento): ClaudeOwnership | undefined {
+	const raw = globalState.get<ClaudeOwnership>(OWNERSHIP_KEY);
 	if (!raw || typeof raw.settingsPath !== "string" || typeof raw.env !== "object") {
 		return undefined;
 	}
 	return raw;
+}
+
+/** Whether this extension currently owns the Claude Code settings file. */
+export function isClaudeCodeConfigured(globalState: vscode.Memento): boolean {
+	return Boolean(readOwnership(globalState));
 }
 
 /**

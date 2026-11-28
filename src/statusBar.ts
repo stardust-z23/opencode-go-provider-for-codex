@@ -6,6 +6,7 @@
  */
 
 import * as vscode from "vscode";
+import { isClaudeCodeConfigured } from "./claudeCodeService";
 import { l10n, l10nFormat } from "./localize";
 import { logger } from "./logger";
 import { getUsageStore } from "./usageService";
@@ -26,6 +27,7 @@ import {
 } from "./goUsage";
 
 let secrets: vscode.SecretStorage | undefined;
+let globalState: vscode.Memento | undefined;
 let usageItem: vscode.StatusBarItem | undefined;
 let usageTimer: NodeJS.Timeout | undefined;
 let renderTimer: NodeJS.Timeout | undefined;
@@ -68,6 +70,7 @@ const usageListeners = new Set<() => void>();
 
 export function initStatusBar(ctx: vscode.ExtensionContext): void {
 	secrets = ctx.secrets;
+	globalState = ctx.globalState;
 	usageItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
 	usageItem.name = l10n("OpenCode Go status");
 	usageItem.command = "codexgo.openUsageDashboard";
@@ -337,7 +340,24 @@ function appendActions(md: vscode.MarkdownString): void {
 	);
 	md.appendMarkdown(`[$(file-code) ${l10n("Open config.toml")}](command:codexgo.openCodexConfig)  \n`);
 	md.appendMarkdown(
-		`[$(refresh) ${l10n("Reload Window")}](command:workbench.action.reloadWindow)`,
+		`[$(refresh) ${l10n("Reload Window")}](command:workbench.action.reloadWindow)\n`,
+	);
+
+	md.appendMarkdown(`\n**Claude Code**\n\n`);
+	if (globalState && isClaudeCodeConfigured(globalState)) {
+		md.appendMarkdown(
+			`[$(refresh) ${l10n("Refresh Claude Code models")}](command:codexgo.refreshClaudeCodePicker)  \n`,
+		);
+		md.appendMarkdown(
+			`[$(discard) ${l10n("Restore Claude Code settings")}](command:codexgo.restoreClaudeCode)  \n`,
+		);
+	} else {
+		md.appendMarkdown(
+			`[$(plug) ${l10n("Configure Claude Code")}](command:codexgo.configureClaudeCode)  \n`,
+		);
+	}
+	md.appendMarkdown(
+		`[$(output) ${l10n("Claude Code diagnostics")}](command:codexgo.showClaudeCodeDiagnostics)`,
 	);
 }
 

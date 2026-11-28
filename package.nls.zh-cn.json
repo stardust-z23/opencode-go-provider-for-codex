@@ -21,6 +21,8 @@
 	"walkthrough.setApiKey.description": "订阅 OpenCode Go、复制 API 密钥并在这里保存。",
 	"walkthrough.syncModels.title": "把模型同步到 Codex",
 	"walkthrough.syncModels.description": "把受支持的模型安装到 Codex 自带的选择器；后台代理负责认证与协议适配。",
+	"walkthrough.configureClaudeCode.title": "配置 Claude Code（可选）",
+	"walkthrough.configureClaudeCode.description": "让 Claude Code 共用同一个回环代理，并把全部 OpenCode Go 模型列进它的 /model 选择器。",
 	"config.title": "OpenCode Go for Codex",
 	"config.proxyPort.desc": "本地 OpenCode Go 代理监听端口（1024-65535）。",
 	"config.codexHome.desc": "存放 Codex `config.toml` 的目录。留空则使用 `CODEX_HOME` 环境变量，或 `~/.codex`。",

@@ -141,6 +141,17 @@
 						"completionEvents": [
 							"onCommand:codexgo.syncModelCatalog"
 						]
+					},
+					{
+						"id": "configureClaudeCode",
+						"title": "%walkthrough.configureClaudeCode.title%",
+						"description": "%walkthrough.configureClaudeCode.description%",
+						"media": {
+							"markdown": "resources/walkthrough/configure-claude-code.md"
+						},
+						"completionEvents": [
+							"onCommand:codexgo.configureClaudeCode"
+						]
 					}
 				]
 			}
