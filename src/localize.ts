@@ -393,6 +393,16 @@ const zhCN: Record<string, string> = {
 	"The Claude Code extension's own environment variables also set {0}.": "Claude Code 扩展自身还设置了下述环境变量：{0}。",
 	"Removed the conflicting Claude Code environment variables. Reload the window to apply it.": "已移除冲突的 Claude Code 环境变量，重载窗口后生效。",
 	"Claude Code extension environment variables": "Claude Code 扩展环境变量",
+	"Claude Code maps model tiers to models OpenCode Go does not serve: {0}.": "Claude Code 的模型档位指向了 OpenCode Go 不提供的模型：{0}。",
+	"Model tiers": "模型档位",
+	"Tier": "档位",
+	"Settings value": "配置值",
+	"Forwarded model": "转发模型",
+	"State": "状态",
+	"ok": "正常",
+	"needs repair": "需修复",
+	"unset": "未设置",
+	"catalog unavailable": "模型目录不可用",
 };
 
 function isZh(): boolean {

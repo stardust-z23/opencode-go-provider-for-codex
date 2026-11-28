@@ -230,6 +230,12 @@ Claude Code 的网关发现（`GET /v1/models`）在本机按 Anthropic 形状�
 
 `claude` CLI 的版本决定写什么：< v2.1.242 只写四档别名（内置选择器里每一档都会路由到对应 Go 模型）；无法探测版本时按“支持”处理，因为 VS Code 扩展自带较新的 Claude Code。
 
+### 档位校验与诊断
+
+接管后，扩展在激活时校验 `ANTHROPIC_MODEL`、四个 `ANTHROPIC_DEFAULT_*_MODEL` 与 `CLAUDE_CODE_SUBAGENT_MODEL`：只要某个值解析不到当前目录里的模型（典型是接管另一家直连配置时残留的值），就弹一次提示并提供「修复 Claude Code 配置」，而不是等一次请求返回 `isn't included in OpenCode Go`。未设置的档位不报错 —— Claude Code 会发 `claude-*` 别名，由代理角色表接住。
+
+「查看 Claude Code 诊断」按档位列出「配置值 → 实际转发模型 → 正常/需修复/未设置」，与代理运行时的解析共用同一个纯函数，因此报告与真实行为一致。
+
 ## 状态栏、额度与使用统计
 
 状态栏显示套餐额度和最近 20 条本地代理请求的缓存命中率；点击命令为 `codexgo.openUsageDashboard`，额度刷新命令仍为 `codexgo.checkUsage`。

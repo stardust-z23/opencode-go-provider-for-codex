@@ -42,11 +42,14 @@ import { logger } from "./logger";
 import { isChatModel } from "./modelCenterData";
 import {
 	buildMessagesPickerRows,
+	describeClaudeTiers,
 	messagesContextFloor,
 	normalizeClaudeModelId,
 	stripOneMillionMarker,
 	suggestClaudeProfile,
+	type ClaudeTierResolution,
 	type PickerModelInput,
+	type RoleModelMap,
 } from "./modelRouting";
 import {
 	ensureOfficialCatalogLoadedOnce,
@@ -215,6 +218,26 @@ export async function maybeRepairClaudeCodeIntegration(
 		await context.globalState.update(OWNERSHIP_KEY, undefined);
 		return;
 	}
+	// A leftover tier from another provider fails one request at a time with
+	// "isn't included in OpenCode Go" and is easy to miss, so surface it here.
+	const stale = await findStaleClaudeTiers(currentEnv);
+	if (stale.length > 0) {
+		const repair = l10n("Repair Claude Code settings");
+		const details = stale
+			.map((tier) => `${tier.label}: ${tier.value ?? "-"}`)
+			.join(", ");
+		const picked = await vscode.window.showWarningMessage(
+			l10nFormat(
+				"Claude Code maps model tiers to models OpenCode Go does not serve: {0}.",
+				details,
+			),
+			repair,
+		);
+		if (picked === repair) {
+			await configureClaudeCode(context);
+		}
+		return;
+	}
 	const auth = await getProxyProviderAuth(context.secrets);
 	if (!auth) {
 		return;
@@ -256,6 +279,7 @@ export async function showClaudeCodeDiagnostics(
 	if (auth) {
 		lines.push(`  - ${l10n("Proxy base URL")}: \`${claudeBaseUrl(auth.baseUrl)}\``);
 	}
+	let settingsEnv: Record<string, unknown> = {};
 	try {
 		const document = await readClaudeSettings(location);
 		const picker = document.document.modelPicker;
@@ -265,6 +289,7 @@ export async function showClaudeCodeDiagnostics(
 				: 0;
 		lines.push(`- ${l10n("Model picker rows")}: ${rows}`);
 		lines.push(`- ${l10n("Claude Code settings exist")}: ${document.exists ? "yes" : "no"}`);
+		settingsEnv = isRecord(document.document.env) ? document.document.env : {};
 	} catch (error) {
 		lines.push(
 			`- ${l10nFormat(
@@ -287,6 +312,27 @@ export async function showClaudeCodeDiagnostics(
 	lines.push(
 		`  - behavesAs: ${supportsBehavesAs(version.version) ? "supported" : "not supported"}`,
 	);
+
+	// What each tier actually forwards, resolved exactly like the proxy does it.
+	lines.push("");
+	lines.push(`### ${l10n("Model tiers")}`);
+	lines.push("");
+	lines.push(
+		`| ${l10n("Tier")} | ${l10n("Settings value")} | ${l10n("Forwarded model")} | ${l10n("State")} |`,
+	);
+	lines.push("| --- | --- | --- | --- |");
+	const tiers = await tierResolutions(settingsEnv);
+	if (tiers.length === 0) {
+		lines.push(`| - | - | - | ${l10n("catalog unavailable")} |`);
+	} else {
+		for (const tier of tiers) {
+			lines.push(
+				`| ${tier.label} | ${tier.value ? `\`${tier.value}\`` : "—"} | ${
+					tier.upstreamModelId ? `\`${tier.upstreamModelId}\`` : "—"
+				} | ${tierStateLabel(tier)} |`,
+			);
+		}
+	}
 	const document = await vscode.workspace.openTextDocument({
 		language: "markdown",
 		content: `${lines.join("\n")}\n`,
@@ -641,6 +687,35 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** Resolve every Claude Code tier against the current catalog. */
+async function tierResolutions(
+	env: Record<string, unknown>,
+): Promise<ClaudeTierResolution[]> {
+	const models = await loadCatalogModels();
+	if (models.length === 0) {
+		return [];
+	}
+	return describeClaudeTiers(
+		env,
+		models.map((model) => model.id),
+		roleModelMap(),
+	);
+}
+
+/** Tiers whose configured value the catalog cannot serve. */
+async function findStaleClaudeTiers(
+	env: Record<string, unknown>,
+): Promise<ClaudeTierResolution[]> {
+	return (await tierResolutions(env)).filter((tier) => tier.invalid);
+}
+
+function tierStateLabel(tier: ClaudeTierResolution): string {
+	if (tier.source === "unset") {
+		return l10n("unset");
+	}
+	return tier.invalid ? l10n("needs repair") : l10n("ok");
+}
+
 function modelEfforts(model: { capabilities?: Record<string, unknown> }): string[] | undefined {
 	const reasoning = model.capabilities?.reasoning;
 	if (typeof reasoning !== "object" || reasoning === null) {
@@ -671,6 +746,18 @@ function configuredExecutable(): string | undefined {
 		.get<string>("executable", "")
 		.trim();
 	return value || undefined;
+}
+
+/** Role models as configured for the proxy, used to resolve tiers. */
+function roleModelMap(): RoleModelMap {
+	return {
+		default: configuredRole("defaultModel"),
+		opus: configuredRole("opusModel"),
+		sonnet: configuredRole("sonnetModel"),
+		haiku: configuredRole("haikuModel"),
+		fable: configuredRole("fableModel"),
+		subagent: configuredRole("subagentModel"),
+	};
 }
 
 function configuredRole(key: string): string | undefined {

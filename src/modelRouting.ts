@@ -265,6 +265,70 @@ export function suggestClaudeProfile(model: {
 		: "claude-sonnet-5-5";
 }
 
+/** `env` keys that carry Claude Code's model tiers, in display order. */
+export const CLAUDE_TIER_ENV_KEYS = [
+	{ key: "ANTHROPIC_MODEL", role: "default", label: "Default model" },
+	{ key: "ANTHROPIC_DEFAULT_OPUS_MODEL", role: "opus", label: "Opus tier" },
+	{ key: "ANTHROPIC_DEFAULT_SONNET_MODEL", role: "sonnet", label: "Sonnet tier" },
+	{ key: "ANTHROPIC_DEFAULT_HAIKU_MODEL", role: "haiku", label: "Haiku tier" },
+	{ key: "ANTHROPIC_DEFAULT_FABLE_MODEL", role: "fable", label: "Fable tier" },
+	{ key: "CLAUDE_CODE_SUBAGENT_MODEL", role: "subagent", label: "Subagent model" },
+] as const satisfies ReadonlyArray<{
+	key: string;
+	role: ClaudeModelRole;
+	label: string;
+}>;
+
+export interface ClaudeTierResolution {
+	/** `env` key in `~/.claude/settings.json`. */
+	key: string;
+	role: ClaudeModelRole;
+	label: string;
+	/** Value written in the settings file, if any. */
+	value?: string;
+	/** Model the loopback proxy forwards upstream for this value. */
+	upstreamModelId?: string;
+	source: MessagesModelSource | "unset";
+	/** A value is present but nothing in the catalog can serve it. */
+	invalid: boolean;
+}
+
+/**
+ * Resolve every Claude Code tier the way the proxy will at request time, so a
+ * leftover value from another provider can be reported before it fails a
+ * request with `isn't included in OpenCode Go`.
+ *
+ * An unset tier is not a problem: Claude Code then sends a Claude alias and the
+ * proxy maps it through {@link resolveMessagesModel}.
+ */
+export function describeClaudeTiers(
+	env: Record<string, unknown>,
+	knownModelIds: Iterable<string>,
+	roles: RoleModelMap,
+): ClaudeTierResolution[] {
+	const known = new Set(knownModelIds);
+	return CLAUDE_TIER_ENV_KEYS.map(({ key, role, label }) => {
+		const raw = typeof env[key] === "string" ? (env[key] as string).trim() : "";
+		if (!raw) {
+			return { key, role, label, source: "unset" as const, invalid: false };
+		}
+		const decision = resolveMessagesModel({
+			requestedModelId: raw,
+			knownModelIds: known,
+			roles,
+		});
+		return {
+			key,
+			role,
+			label,
+			value: raw,
+			upstreamModelId: decision.upstreamModelId || undefined,
+			source: decision.source,
+			invalid: decision.source === "passthrough",
+		};
+	});
+}
+
 /** Minimal model facts needed to build a Claude Code picker row. */
 export interface PickerModelInput {
 	id: string;

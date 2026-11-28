@@ -10,6 +10,7 @@ const require = createRequire(import.meta.url);
 const {
 	buildMessagesPickerRows,
 	claudeRoleForModel,
+	describeClaudeTiers,
 	looksLikeClaudeModel,
 	messagesContextFloor,
 	normalizeClaudeModelId,
@@ -24,6 +25,7 @@ function test(name, fn) {
 
 const KNOWN = [
 	"deepseek-v4.1-flash",
+	"deepseek-v4-pro",
 	"glm-5.3",
 	"claude-haiku-5-5",
 	"minimax-m3",
@@ -166,7 +168,7 @@ test("an unconfigured non-Claude id is forwarded for the gateway to reject", () 
 
 test("normalizeClaudeModelId heals stale role values and strips markers", () => {
 	assert.equal(normalizeClaudeModelId("deepseek-v4.1-flash[1M]", KNOWN), "deepseek-v4.1-flash");
-	assert.equal(normalizeClaudeModelId("deepseek-v4-pro[1m]", KNOWN), undefined);
+	assert.equal(normalizeClaudeModelId("deepseek-v4-pro[1m]", KNOWN), "deepseek-v4-pro");
 	assert.equal(normalizeClaudeModelId("deepseek-v4-flash[1M]", KNOWN), undefined);
 	assert.equal(normalizeClaudeModelId(undefined, KNOWN), undefined);
 	assert.equal(normalizeClaudeModelId("   ", KNOWN), undefined);
@@ -224,6 +226,43 @@ test("context floor is the smallest sub-1M window", () => {
 		undefined,
 	);
 	assert.equal(messagesContextFloor([]), undefined);
+});
+
+test("describeClaudeTiers reports what each tier really forwards", () => {
+	const env = {
+		ANTHROPIC_MODEL: "deepseek-v4.1-flash",
+		ANTHROPIC_DEFAULT_OPUS_MODEL: "deepseek-v4-pro[1M]",
+		ANTHROPIC_DEFAULT_SONNET_MODEL: "deepseek-v4-flash-vision-exp[1M]",
+		ANTHROPIC_DEFAULT_HAIKU_MODEL: "glm-5.3-flash",
+		CLAUDE_CODE_SUBAGENT_MODEL: "claude-opus-5-5",
+	};
+	const roles = { ...ROLES, opus: "deepseek-v4-pro" };
+	const tiers = describeClaudeTiers(env, KNOWN, roles);
+	const byRole = Object.fromEntries(tiers.map((tier) => [tier.role, tier]));
+
+	assert.equal(byRole.default.source, "known");
+	assert.equal(byRole.default.upstreamModelId, "deepseek-v4.1-flash");
+	assert.equal(byRole.default.invalid, false);
+
+	// A 1M marker on a served model is fine.
+	assert.equal(byRole.opus.upstreamModelId, "deepseek-v4-pro");
+	assert.equal(byRole.opus.invalid, false);
+
+	// A leftover from another provider must be flagged, with what it would send.
+	assert.equal(byRole.sonnet.invalid, true);
+	assert.equal(byRole.sonnet.upstreamModelId, "deepseek-v4-flash-vision-exp");
+	assert.equal(byRole.sonnet.value, "deepseek-v4-flash-vision-exp[1M]");
+
+	// A Claude alias in a tier resolves through the role table.
+	assert.equal(byRole.subagent.source, "role");
+	assert.equal(byRole.subagent.upstreamModelId, "deepseek-v4-pro");
+
+	// An unset tier is not an error; Claude Code sends the Claude alias instead.
+	assert.equal(byRole.fable.source, "unset");
+	assert.equal(byRole.fable.invalid, false);
+	assert.equal(byRole.fable.upstreamModelId, undefined);
+
+	assert.equal(tiers.length, 6);
 });
 
 let failed = 0;

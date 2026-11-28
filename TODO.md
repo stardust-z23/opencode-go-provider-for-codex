@@ -151,9 +151,10 @@ Verified on 2026-11-28 against the public catalog, the OpenCode docs, a live pro
 
 - [ ] Record Claude Messages proxy usage in the existing local usage store.
 - [ ] Distinguish Claude Code traffic from Codex traffic without storing prompts or responses.
-- [ ] Log model-role mapping, discovered/model-picker model count, and session source.
-- [ ] Keep request bodies and tool results out of persistent logs.
-- [ ] Add a diagnostic action that reports whether the proxy is reachable, settings are valid, and the picker version requirement is met.
+- [x] Log model-role mapping, discovered/model-picker model count, and session source.
+- [x] Keep request bodies and tool results out of persistent logs.
+- [x] Add a diagnostic action that reports whether the proxy is reachable, settings are valid, and the picker version requirement is met.
+- [x] Validate owned model tiers on activation and list each tier's real upstream model in the diagnostics report.
 
 ### P2: Optional endpoints and compatibility
 
