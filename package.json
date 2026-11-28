@@ -18,7 +18,7 @@
 		"type": "git",
 		"url": "https://github.com/stardust-z23/opencode-go-provider-for-codex"
 	},
-	"version": "0.2.15",
+	"version": "0.2.16",
 	"engines": {
 		"vscode": "^1.116.0"
 	},
@@ -88,6 +88,30 @@
 				"command": "codexgo.openSettings",
 				"category": "%commandCategory%",
 				"title": "%command.openSettings%"
+			},
+			{
+				"command": "codexgo.configureClaudeCode",
+				"category": "%commandCategory%",
+				"title": "%command.configureClaudeCode%",
+				"icon": "$(plug)"
+			},
+			{
+				"command": "codexgo.refreshClaudeCodePicker",
+				"category": "%commandCategory%",
+				"title": "%command.refreshClaudeCodePicker%",
+				"icon": "$(refresh)"
+			},
+			{
+				"command": "codexgo.restoreClaudeCode",
+				"category": "%commandCategory%",
+				"title": "%command.restoreClaudeCode%",
+				"icon": "$(discard)"
+			},
+			{
+				"command": "codexgo.showClaudeCodeDiagnostics",
+				"category": "%commandCategory%",
+				"title": "%command.showClaudeCodeDiagnostics%",
+				"icon": "$(output)"
 			}
 		],
 		"walkthroughs": [
@@ -188,6 +212,56 @@
 					"minimum": 1024,
 					"maximum": 65535,
 					"markdownDescription": "%config.proxyPort.desc%"
+				},
+				"codexgo.claudeCode.defaultModel": {
+					"type": "string",
+					"default": "",
+					"markdownDescription": "%config.claudeCode.defaultModel.desc%"
+				},
+				"codexgo.claudeCode.opusModel": {
+					"type": "string",
+					"default": "",
+					"markdownDescription": "%config.claudeCode.opusModel.desc%"
+				},
+				"codexgo.claudeCode.sonnetModel": {
+					"type": "string",
+					"default": "",
+					"markdownDescription": "%config.claudeCode.sonnetModel.desc%"
+				},
+				"codexgo.claudeCode.haikuModel": {
+					"type": "string",
+					"default": "",
+					"markdownDescription": "%config.claudeCode.haikuModel.desc%"
+				},
+				"codexgo.claudeCode.fableModel": {
+					"type": "string",
+					"default": "",
+					"markdownDescription": "%config.claudeCode.fableModel.desc%"
+				},
+				"codexgo.claudeCode.subagentModel": {
+					"type": "string",
+					"default": "",
+					"markdownDescription": "%config.claudeCode.subagentModel.desc%"
+				},
+				"codexgo.claudeCode.settingsPath": {
+					"type": "string",
+					"default": "",
+					"markdownDescription": "%config.claudeCode.settingsPath.desc%"
+				},
+				"codexgo.claudeCode.executable": {
+					"type": "string",
+					"default": "",
+					"markdownDescription": "%config.claudeCode.executable.desc%"
+				},
+				"codexgo.claudeCode.replaceBuiltInPicker": {
+					"type": "boolean",
+					"default": true,
+					"markdownDescription": "%config.claudeCode.replaceBuiltInPicker.desc%"
+				},
+				"codexgo.claudeCode.useBehavesAs": {
+					"type": "boolean",
+					"default": false,
+					"markdownDescription": "%config.claudeCode.useBehavesAs.desc%"
 				}
 			}
 		}
@@ -198,7 +272,7 @@
 		"clean": "node scripts/clean-out.mjs",
 		"compile": "npm run clean && tsc -p ./",
 		"watch": "tsc -watch -p ./",
-		"test": "npm run compile && node scripts/test-toml-edit.mjs && node scripts/test-model-merge.mjs && node scripts/test-catalog.mjs && node scripts/test-model-center-data.mjs && node scripts/test-go-usage.mjs && node scripts/test-usage-stats.mjs && node --check resources/usage-dashboard/dashboard.js && node --check resources/model-center/model-center.js && node scripts/test-proxy-chat.mjs && node scripts/test-proxy-anthropic.mjs",
+		"test": "npm run compile && node scripts/test-toml-edit.mjs && node scripts/test-model-merge.mjs && node scripts/test-model-routing.mjs && node scripts/test-claude-settings.mjs && node scripts/test-catalog.mjs && node scripts/test-model-center-data.mjs && node scripts/test-go-usage.mjs && node scripts/test-usage-stats.mjs && node --check resources/usage-dashboard/dashboard.js && node --check resources/model-center/model-center.js && node scripts/test-proxy-chat.mjs && node scripts/test-proxy-anthropic.mjs && node scripts/test-proxy-messages.mjs",
 		"test:e2e": "npm run compile && node scripts/test-codex-e2e.mjs",
 		"test:live": "npm run compile && node scripts/test-codex-live.mjs",
 		"test:binding": "node scripts/test-thinking-binding-live.mjs",

@@ -11,6 +11,10 @@
 	"command.openModelCenter": "打开 OpenCode Go 模型中心",
 	"command.openCodexConfig": "打开 Codex config.toml",
 	"command.openSettings": "打开 OpenCode Go for Codex 设置",
+	"command.configureClaudeCode": "为 OpenCode Go 配置 Claude Code",
+	"command.refreshClaudeCodePicker": "刷新 Claude Code 模型列表",
+	"command.restoreClaudeCode": "恢复 Claude Code 配置",
+	"command.showClaudeCodeDiagnostics": "查看 Claude Code 诊断",
 	"walkthrough.title": "开始使用 OpenCode Go for Codex",
 	"walkthrough.description": "设置 OpenCode Go API 密钥，然后把模型同步到 Codex。",
 	"walkthrough.setApiKey.title": "设置 OpenCode Go API 密钥",
@@ -29,5 +33,15 @@
 	"config.usageDisplayWindow.weekly.desc": "周（7 天）窗口。",
 	"config.usageDisplayWindow.monthly.desc": "月（30 天）窗口。",
 	"config.usageWarningThreshold.desc": "状态栏额度项变黄的用量百分比；取三个窗口中最差的一个判定。",
-	"config.usageErrorThreshold.desc": "状态栏额度项变红的用量百分比；取三个窗口中最差的一个判定。"
+	"config.usageErrorThreshold.desc": "状态栏额度项变红的用量百分比；取三个窗口中最差的一个判定。",
+	"config.claudeCode.defaultModel.desc": "Claude Code 请求里的 Claude 模型名未单独配置时使用的 OpenCode Go 模型。留空则原样转发未知 ID。改动立即对代理生效。",
+	"config.claudeCode.opusModel.desc": "`opus` 档以及未单独映射的 Opus 模型 ID 使用的 OpenCode Go 模型。留空则回落到默认模型。",
+	"config.claudeCode.sonnetModel.desc": "`sonnet` 档以及未单独映射的 Sonnet 模型 ID 使用的 OpenCode Go 模型。留空则回落到默认模型。",
+	"config.claudeCode.haikuModel.desc": "`haiku` 档、后台任务以及未单独映射的 Haiku 模型 ID 使用的 OpenCode Go 模型。留空则回落到默认模型。",
+	"config.claudeCode.fableModel.desc": "`fable` 档使用的 OpenCode Go 模型。留空则回落到 Opus 档，再回落到默认模型。",
+	"config.claudeCode.subagentModel.desc": "Claude Code 子代理使用的 OpenCode Go 模型。留空则回落到默认模型。",
+	"config.claudeCode.settingsPath.desc": "Claude Code `settings.json` 的路径，或其所在目录。留空则使用 `CLAUDE_CONFIG_DIR`，再回落到 `~/.claude`。",
+	"config.claudeCode.executable.desc": "用于读取已安装版本的 Claude Code CLI，从而只在支持的版本上写模型列表与 `behavesAs`。留空则自动在 PATH 中探测 `claude`。",
+	"config.claudeCode.replaceBuiltInPicker.desc": "写入 `replaceBuiltInOptions: true`，让 Claude Code 的 `/model` 选择器列出 OpenCode Go 模型，而不是内置 Claude 阵容。",
+	"config.claudeCode.useBehavesAs.desc": "给每条选择器条目写 `behavesAs` Claude 档案，让 Claude Code 套用已知能力与 effort 默认值。默认关闭，因为它同时会改变费用展示。"
 }

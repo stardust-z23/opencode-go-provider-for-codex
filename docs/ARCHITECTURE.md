@@ -21,6 +21,8 @@
 | `src/proxyController.ts` | 常驻本地代理生命周期、provider token 轮换与端口切换 |
 | `src/proxy/server.ts` | 回环 HTTP 服务、Responses 转发、Chat Completions 转换 |
 | `src/proxy/messages.ts` | Anthropic Messages 转换与 thinking 块处理 |
+| `src/proxy/messagesNative.ts` | Claude Code 原生 Messages 直通、会话注入与 SSE 保真转发 |
+| `src/modelRouting.ts` | Claude Code 模型路由（`[1m]` 剥离、四档别名、picker 行与窗口下限） |
 | `src/proxy/responsesRepair.ts` | namespace 工具展开/还原、重复参数合并、迟到 SSE 参数整流 |
 | `src/proxy/session.ts` | 多来源会话 ID 提取与稳定会话指纹 |
 | `src/proxy/media.ts` | 文件、PDF、音频与工具媒体转换 |
@@ -35,6 +37,9 @@
 | `src/modelCenterService.ts` | 每小时模型/RSS 拉取、90 天历史与未读状态 |
 | `src/modelCenterPanel.ts` | 模型中心 Webview、模型行投影、未读徽标与外部链接 |
 | `src/apiKey.ts` | SecretStorage 与旧环境变量的一次性迁移 |
+| `src/claudeSettings.ts` | `~/.claude/settings.json` 投影：自有键、原子写入、备份、三方回滚 |
+| `src/claudeCodeCli.ts` | Claude Code 可执行文件探测与版本门控 |
+| `src/claudeCodeService.ts` | Claude Code 接管/刷新/恢复命令、picker 生成与修复提示 |
 | `src/localize.ts` | 以英文原文为键的 zh-CN 字典 |
 
 ## 启动流程
@@ -47,7 +52,8 @@
    - 旧版通过环境变量提供的密钥会先迁移到 SecretStorage。
    - 启动成功后把 provider 的 `base_url` 和派生 bearer token 写入配置。
 5. 模型中心启动后延迟 5 秒做首次公开目录/RSS 基线，此后每小时刷新。
-6. 首次运行且没有密钥时打开 walkthrough。需要推理的模型发现只在用户执行目录同步或模型自动同步时运行。
+6. 代理启动完成后检查已接管的 Claude Code 配置：若其中的回环地址与当前代理不一致，提示一键更新。
+7. 首次运行且没有密钥时打开 walkthrough。需要推理的模型发现只在用户执行目录同步或模型自动同步时运行。
 
 ## 配置编辑约束
 
@@ -126,6 +132,8 @@ Codex 自带选择器会通过 app-server 更新当前线程，因此已列出�
 | `responses` | `/responses` | 修复 reasoning、工具历史、重复参数、namespace 工具和迟到流式参数后转发 |
 | `chat` | `/chat/completions` | 请求与 SSE 响应双向转换，包括工具调用 |
 | `anthropic` | `/messages` | 请求与 SSE 响应双向转换，包括 thinking 块与工具调用 |
+| Claude Code 原生 | `/v1/messages` | 只改写模型、认证、会话头与 UA，body 与 SSE 原样直通 |
+| Claude Code 计数 | `/v1/messages/count_tokens` | 原样直通 |
 
 `resolveModelRoute()` 先查当前模型列表，再退回协议别名表和内置快照，最后默认 `chat`。若命中别名，路由同时返回 `upstreamModelId`，代理会在转发前把上游 `model` 从别名改回基础模型 ID。
 
@@ -183,6 +191,44 @@ Chat Completions 上游要求 assistant 的 `tool_calls` 与对应 `tool` 结果
 ### 推理档位映射
 
 Codex 的模型选择器会用内部可见档位列表过滤目录，默认不包含 `max` 和 `minimal`，且默认隐藏 `ultra`。目录同步因此把 `max` 投影到稳定的可见档 `xhigh`，并在模型没有 `low` 时把 `minimal` 映射为 `low`；落到同一槽位的档位会去重。代理收到 `xhigh` 或 `low` 后按模型声明还原为上游 `max` / `minimal`。模型同时声明 `xhigh` 和 `max` 时，用户看到的唯一 `XHigh` 槽位在选择后发送上游 `max`。
+
+## Claude Code 适配
+
+Claude Code 与 Codex 共用同一个回环代理，但走原生 Anthropic Messages，而不是 Responses。
+
+### 直通而非转换
+
+Claude Code 说的就是 Anthropic Messages，OpenCode Go 也提供该格式的端点（非 Messages 原生模型由网关翻译）。因此代理不做协议转换，只做四处改写：
+
+1. `model`：剥离 `[1m]`；已知 Go 模型原样转发；`opus`/`sonnet`/`haiku`/`fable`/`best`/`default`/`opusplan` 等 Claude 别名按设置改写成 Go 模型；未识别的 Claude ID 回落到默认模型；其余未知 ID 原样转发，让网关返回真实错误。
+2. 认证：用 SecretStorage 中的真实密钥覆盖，同时带 `Authorization: Bearer` 与 `x-api-key`。
+3. `x-opencode-session`：Go 网关的硬性要求，缺失会在认证前返回 `400 MissingSessionID`。依次取 `x-claude-code-session-id`、`metadata.user_id` JSON 的 `session_id`（或旧版 `_session_` 形式）、`metadata.session_id`，最后用会话前缀指纹兜底。
+4. `User-Agent`：换成扩展自己的 UA。
+
+请求体不解析、不重排、不增删字段，因此 `thinking`、`output_config`、`context_management`、`cache_control`、`anthropic-beta` 等内容原样到达网关。SSE 按字节转发，`ping` 与注释帧保真；usage 通过旁路解析合并进本地统计。错误状态码与错误体也原样透传，因为 Claude Code 依赖原始措辞做重试与上下文超限恢复。
+
+### 设置接管
+
+`~/.claude/settings.json`（或 `CLAUDE_CONFIG_DIR` / 设置项指定的路径）只改自有键：
+
+- `env`：`ANTHROPIC_BASE_URL`、`ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_MODEL`、`ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU,FABLE}_MODEL`、`CLAUDE_CODE_SUBAGENT_MODEL`、`CLAUDE_CODE_MAX_CONTEXT_TOKENS`、`CLAUDE_CODE_AUTO_MODE_SERVER`。
+- 顶层 `modelPicker`。
+
+接管时会删除已存在的 `ANTHROPIC_API_KEY`：同时存在两个认证键会让 Claude Code 把代理 token 当成自定义密钥并要求确认。
+
+写入流程：读取并解析 → 深度比较（相同则不动盘）→ 时间戳备份 → 同目录临时文件 + rename → 回读校验；无法解析的文件直接拒绝，绝不覆盖。
+
+回滚是三方合并：只有当前值仍等于本扩展写入的值才恢复；用户期间改过的键保持原样并列入提示。被删除的键先写空串（运行中的会话按增量合并 `env`，删键撤不掉旧值），约 3 秒后再清掉空串。在没有 `~/.codex/config.toml` 的机器上，启用代理不会为 Codex 创建配置。
+
+### 模型列表
+
+`modelPicker` 用 `replaceBuiltInOptions: true`，一行一个 Go 文本模型，`label` 取官方目录名称，`description` 写明上下文与原生协议。上下文 ≥ 1M 的行带 `[1m]` 标记（代理负责剥离）；`CLAUDE_CODE_MAX_CONTEXT_TOKENS` 取非 1M 行里最小的窗口。`behavesAs` 默认不写，只在 `codexgo.claudeCode.useBehavesAs` 开启且 Claude Code ≥ 2.1.257 时按推理档位推断。
+
+Claude Code 的网关发现（`GET /v1/models`）在本机按 Anthropic 形状返回同一份列表；带 `anthropic-version` 才返回 Anthropic 形状，Codex 的探测仍得到空的 OpenAI 列表。`HEAD /api/hello` 在本机应答、不转发（上游会挂起）。
+
+### 版本与降级
+
+`claude` CLI 的版本决定写什么：< v2.1.242 只写四档别名（内置选择器里每一档都会路由到对应 Go 模型）；无法探测版本时按“支持”处理，因为 VS Code 扩展自带较新的 Claude Code。
 
 ## 状态栏、额度与使用统计
 

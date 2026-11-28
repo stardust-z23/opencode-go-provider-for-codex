@@ -20,6 +20,7 @@ The extension is modeled on the patterns of [OpenCode Go Provider for Copilot](h
 - Live OpenCode Go model list enriched with metadata from OpenCode's official public catalog.
 - One-command sync into Codex's own `/model` picker, writing `config.toml` with backups, comments and formatting preserved.
 - Always-on loopback proxy for authentication, native Responses repair, and Chat Completions / Anthropic Messages translation.
+- Native Anthropic Messages pass-through so Claude Code (CLI or VS Code extension) can use the same OpenCode Go key without ever holding it.
 - Plan usage, current-session cache health, and a local request-usage dashboard in VS Code.
 - A model center with official pricing, monthly allowances, context tiers, peak/date multipliers, change history, and aggregated update notifications.
 
@@ -28,7 +29,8 @@ The extension is modeled on the patterns of [OpenCode Go Provider for Copilot](h
 1. Subscribe to OpenCode Go at [opencode.ai/auth](https://opencode.ai/auth) and copy an API key.
 2. `Ctrl+Shift+P` → **OpenCode Go for Codex: Set OpenCode Go API Key**.
 3. `Ctrl+Shift+P` → **OpenCode Go for Codex: Sync OpenCode Go Models to Codex** — installs the usable OpenCode Go models into Codex's own picker (no inference requests are sent).
-4. **Restart VS Code** so Codex reloads `config.toml`, then choose a model from Codex's own picker.
+4. *(Optional, Claude Code)* `Ctrl+Shift+P` → **OpenCode Go for Codex: Configure Claude Code for OpenCode Go** — writes the loopback provider, the role aliases and the `/model` list into `~/.claude/settings.json`. The real key stays in SecretStorage.
+5. **Restart VS Code** so Codex reloads `config.toml`, then choose a model from Codex's own picker.
 
 > The extension starts the loopback proxy automatically. A user-level environment variable is not required; the upstream key stays in VS Code SecretStorage.
 
@@ -128,6 +130,20 @@ The original IDs remain the backward-compatible Chat Completions entries. The `-
 
 DeepSeek's thinking mode rejects a forced `tool_choice` such as `{ "type": "function", "name": "..." }`; Codex uses `auto`, which is supported on all three routes. OpenCode Go does not implement native `/responses/compact` for DeepSeek (`404`), but the Chat and Anthropic aliases now use the proxy's local summary fallback. The fallback is stored in a proxy-owned `compaction` item and replayed as a normal user summary on later turns.
 
+### Claude Code
+
+Claude Code 说的就是 Anthropic Messages，而 OpenCode Go 对每个文本模型都提供该格式（非原生模型由网关翻译），所以这里加的是原生直通，而不是又一层转换：
+
+- `ANTHROPIC_BASE_URL` 指向 `http://127.0.0.1:15722`（不带 `/v1`，Claude Code 自己拼 `/v1/messages`）。
+- `ANTHROPIC_AUTH_TOKEN` 存派生出的回环 token。真实密钥不离开 SecretStorage；接管时会删除 `ANTHROPIC_API_KEY`，因为两个认证键同时存在会让 Claude Code 把 token 当成自定义密钥并要求确认。
+- 代理只改写 `model`、认证头、`x-opencode-session` 与 UA。其余内容——`thinking`、`output_config`、`context_management`、`cache_control`、`anthropic-beta`、PDF、图片、工具结果——原样到达网关，SSE 按字节转发。
+- `x-opencode-session` 是上游硬性要求：缺失会在认证前返回 `400 MissingSessionID`。代理依次从 `x-claude-code-session-id`、`metadata.user_id` 或稳定的会话指纹解析。
+- `/model` 由官方目录生成（`replaceBuiltInOptions: true`）。上下文 ≥ 1M 的行带本地 `[1m]` 标记（代理剥离）；`CLAUDE_CODE_MAX_CONTEXT_TOKENS` 取非 1M 行里最小的窗口。
+- `opus`/`sonnet`/`haiku`/`fable` 仍然可用：未映射的 Claude ID 会按 `codexgo.claudeCode.*` 设置改写成 Go 模型，这也是 v2.1.242 之前没有 `modelPicker` 时的降级路径。
+- 恢复是三方合并：只有仍等于本扩展写入值的键才回滚；被删除的键先写 `""`，因为运行中的 Claude Code 只增量合并 `env`。
+
+Claude Code 在启动时读取设置，因此首次接管需要新会话或重载 VS Code 窗口。
+
 ### Safety
 
 - **Surgical edits, never a rewrite.** The config file is edited line-by-line; comments, formatting, unknown keys, other providers and `[profiles.*]` blocks are left untouched. The extension only touches the top-level keys it owns: `model`, `model_provider`, `model_reasoning_effort`, and `model_catalog_json` for catalog commands.
@@ -149,6 +165,10 @@ DeepSeek's thinking mode rejects a forced `tool_choice` such as `{ "type": "func
 | `OpenCode Go for Codex: Use Codex's Built-in Model List` | Remove `model_catalog_json` and the generated catalog file. |
 | `OpenCode Go for Codex: Open Codex config.toml` | Open the config file in the editor. |
 | `OpenCode Go for Codex: Open OpenCode Go for Codex Settings` | Extension settings. |
+| `OpenCode Go for Codex: Configure Claude Code for OpenCode Go` | Point Claude Code at the loopback proxy, map the Opus/Sonnet/Haiku/Fable tiers, and rebuild `/model` from the official catalog. |
+| `OpenCode Go for Codex: Refresh Claude Code Model List` | Rebuild only `modelPicker` after the catalog changed. |
+| `OpenCode Go for Codex: Restore Claude Code Settings` | Revert every key this extension wrote, keeping edits you made in the meantime. |
+| `OpenCode Go for Codex: Show Claude Code Diagnostics` | Report the settings path, ownership, proxy address, picker size and CLI version. |
 
 ### Settings
 
@@ -163,6 +183,12 @@ DeepSeek's thinking mode rejects a forced `tool_choice` such as `{ "type": "func
 | `codexgo.usageWarningThreshold` | `80` | Usage % at which the item turns yellow (worst of the three windows). |
 | `codexgo.usageErrorThreshold` | `95` | Usage % at which the item turns red (worst of the three windows). |
 | `codexgo.proxyPort` | `15722` | Loopback proxy port (1024-65535). |
+| `codexgo.claudeCode.defaultModel` | *(empty)* | OpenCode Go model that unmapped Claude model ids route to. |
+| `codexgo.claudeCode.opusModel` / `sonnetModel` / `haikuModel` / `fableModel` / `subagentModel` | *(empty)* | Per-tier OpenCode Go models; empty falls back to the default model. |
+| `codexgo.claudeCode.settingsPath` | *(empty)* | `settings.json` or its directory; empty = `CLAUDE_CONFIG_DIR` → `~/.claude`. |
+| `codexgo.claudeCode.executable` | *(empty)* | `claude` CLI used for version detection; empty = auto-detect on `PATH`. |
+| `codexgo.claudeCode.replaceBuiltInPicker` | `true` | Write `replaceBuiltInOptions: true` so `/model` lists the OpenCode Go models. |
+| `codexgo.claudeCode.useBehavesAs` | `false` | Give picker rows a Claude capability profile (also changes cost display). |
 
 ### Offline behaviour
 
@@ -188,6 +214,9 @@ Model IDs and metadata degrade independently:
 - **The usage item shows `OpenCode Go: add API key` / `OpenCode Go: invalid key` / `OpenCode Go: error`** — no key is configured, the usage endpoint returned `401` (invalid key or no active Go plan), or the endpoint is unreachable. Click the item to refresh; hover it for the reason and the set-key action.
 - **Chat shows no reply at all** — the selected model's upstream can be stuck (the gateway answers `200` and only sends `: keep-alive`, with no events) or the model may be blocked in your region (the Codex log shows `403 ... not supported`, e.g. `gpt-5.6-luna`, `gpt-6-luna`, `muse-spark-*` outside their supported regions). Switch to another model (`grok-4.6` / `grok-4.7` are good fallbacks) or retry later — nothing needs reconfiguring. The upstream routes are independent: `/responses`, `/chat/completions` and `/messages` can fail or hang separately. Proxies such as cc-switch translate Codex's Responses requests into Chat Completions, so they keep working in exactly that case; Codex 0.162 removed `wire_api = "chat"`, so this extension has no direct Chat Completions route to fall back to.
 - **Remote compaction fails** — Chat Completions and Anthropic Messages use a local summary fallback, so `/responses/compact` no longer returns `501`. Native Responses compaction is still forwarded to OpenCode; DeepSeek's Responses alias can return `404` there, in which case use the Chat or Anthropic alias for local compaction.
+- **Claude Code says the model "isn't recognized"** — expected for OpenCode model ids: Claude Code assumes a 1M window, and the proxy strips the local `[1m]` marker before forwarding. Turn on `codexgo.claudeCode.useBehavesAs` (v2.1.257+) if you want Claude Code to apply a known Claude capability profile instead.
+- **Claude Code's `/model` still lists the built-in Claude models** — `modelPicker` is read at startup. Reload the window or start a new session after configuring, and make sure no managed-settings file overrides the picker.
+- **Claude Code returns `400 MissingSessionID`** — the request did not pass through the loopback proxy. Check that `/status` shows the loopback base URL, then reload the window so the extension rewrites `~/.claude/settings.json`.
 
 ### Development
 
@@ -242,6 +271,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the module map, startup flo
 - 一条命令把模型同步到 Codex 自带的 `/model` 选择器，写入 `config.toml` 时保留备份、注释与格式。
 - 常驻本机回环代理负责认证、原生 Responses 修复，以及 Chat Completions / Anthropic Messages 转换。
 - 状态栏显示套餐额度和快捷操作。
+- 原生 Anthropic Messages 直通：Claude Code（CLI 或 VS Code 扩展）可以直接用同一个 OpenCode Go 密钥，而真实密钥始终不离开 SecretStorage。
 - 模型中心展示官方价格、月额度、上下文分档、峰谷/日期倍率、变更历史与官方消息，并聚合提醒。
 
 ### 快速开始
@@ -249,7 +279,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the module map, startup flo
 1. 在 [opencode.ai/auth](https://opencode.ai/auth) 订阅 OpenCode Go 并复制 API 密钥。
 2. `Ctrl+Shift+P` → **OpenCode Go for Codex: 设置 OpenCode Go API 密钥**。
 3. `Ctrl+Shift+P` → **OpenCode Go for Codex: 将 OpenCode Go 模型同步到 Codex** —— 把当前可用的 OpenCode Go 模型写入 Codex 自带的选择器（不发送推理请求）。
-4. **重启 VS Code**，让 Codex 重新读取 `config.toml`，然后在 Codex 自带的选择器中选择模型。
+4. *（可选，Claude Code）* `Ctrl+Shift+P` → **OpenCode Go for Codex: 为 OpenCode Go 配置 Claude Code** —— 把回环 provider、四档别名与 `/model` 列表写入 `~/.claude/settings.json`；真实密钥仍只保存在 SecretStorage。
+5. **重启 VS Code**，让 Codex 重新读取 `config.toml`，然后在 Codex 自带的选择器中选择模型。
 
 > 扩展会自动启动本机回环代理，不需要用户级环境变量；OpenCode Go 的真实密钥只保存在 VS Code SecretStorage。
 
@@ -349,6 +380,20 @@ Codex 的选择器（CLI 的 `/model` 命令、Codex VS Code 扩展中的模型�
 
 DeepSeek 的 thinking 模式不接受强制 `tool_choice`（例如 `{ "type": "function", "name": "..." }`）；Codex 使用 `auto`，三种协议均支持。OpenCode Go 没有为 DeepSeek 实现原生 `/responses/compact`（返回 `404`），但 Chat 和 Anthropic 别名会使用代理的本地摘要回退。摘要保存在本扩展生成的 `compaction` 条目中，并在后续轮次作为普通 user 摘要重放。
 
+### Claude Code
+
+Claude Code 说的就是 Anthropic Messages，而 OpenCode Go 对每个文本模型都提供该格式（非原生模型由网关翻译），所以这里做的是原生直通，而不是又一层转换：
+
+- `ANTHROPIC_BASE_URL` 指向 `http://127.0.0.1:15722`（不带 `/v1`，Claude Code 自己拼 `/v1/messages`）。
+- `ANTHROPIC_AUTH_TOKEN` 存派生出的回环 token。真实密钥不离开 SecretStorage；接管时会删除 `ANTHROPIC_API_KEY`，因为两个认证键同时存在会让 Claude Code 把 token 当成自定义密钥并要求确认。
+- 代理只改写 `model`、认证头、`x-opencode-session` 与 UA；`thinking`、`output_config`、`context_management`、`cache_control`、`anthropic-beta`、PDF、图片与工具结果全部原样到达网关，SSE 按字节转发。
+- `x-opencode-session` 是上游硬性要求：缺失会在认证前返回 `400 MissingSessionID`。代理依次从 `x-claude-code-session-id`、`metadata.user_id` 或稳定会话指纹解析。
+- `/model` 由官方目录生成（`replaceBuiltInOptions: true`）；上下文 ≥ 1M 的行带本地 `[1m]` 标记（代理剥离），`CLAUDE_CODE_MAX_CONTEXT_TOKENS` 取非 1M 行里最小的窗口。
+- `opus`/`sonnet`/`haiku`/`fable` 仍然可用：未映射的 Claude ID 会按 `codexgo.claudeCode.*` 设置改写成 Go 模型，这也是 v2.1.242 之前没有 `modelPicker` 时的降级路径。
+- 恢复是三方合并：只有仍等于本扩展写入值的键才回滚；被删除的键先写 `""`，因为运行中的 Claude Code 只增量合并 `env`。
+
+Claude Code 在启动时读取设置，因此首次接管需要新会话或重载 VS Code 窗口。
+
 ### 安全性
 
 - **外科手术式编辑，绝不整文件重写。** 配置逐行修改；注释、格式、未知键、其他 provider 与 `[profiles.*]` 均不受影响。扩展只改自己管理的顶层键：`model`、`model_provider`、`model_reasoning_effort`，以及目录命令使用的 `model_catalog_json`。
@@ -370,6 +415,10 @@ DeepSeek 的 thinking 模式不接受强制 `tool_choice`（例如 `{ "type": "f
 | `OpenCode Go for Codex: 改用 Codex 内置模型列表` | 移除 `model_catalog_json` 并删除生成的目录文件。 |
 | `OpenCode Go for Codex: 打开 Codex config.toml` | 在编辑器中打开配置文件。 |
 | `OpenCode Go for Codex: 打开 OpenCode Go for Codex 设置` | 扩展设置。 |
+| `OpenCode Go for Codex: 为 OpenCode Go 配置 Claude Code` | 把 Claude Code 指向回环代理，映射 Opus/Sonnet/Haiku/Fable 四档，并按官方目录重建 `/model` 列表。 |
+| `OpenCode Go for Codex: 刷新 Claude Code 模型列表` | 目录变化后只重建 `modelPicker`。 |
+| `OpenCode Go for Codex: 恢复 Claude Code 配置` | 回滚本扩展写过的每一个键，同时保留你期间自己的修改。 |
+| `OpenCode Go for Codex: 查看 Claude Code 诊断` | 报告设置路径、接管状态、代理地址、picker 条目数与 CLI 版本。 |
 
 ### 设置项
 
@@ -384,6 +433,12 @@ DeepSeek 的 thinking 模式不接受强制 `tool_choice`（例如 `{ "type": "f
 | `codexgo.usageWarningThreshold` | `80` | 额度项变黄的用量百分比（取三个窗口中最差的一个）。 |
 | `codexgo.usageErrorThreshold` | `95` | 额度项变红的用量百分比（取三个窗口中最差的一个）。 |
 | `codexgo.proxyPort` | `15722` | 本地代理监听端口（1024-65535）。 |
+| `codexgo.claudeCode.defaultModel` | *（空）* | 未映射的 Claude 模型 ID 使用的 OpenCode Go 模型。 |
+| `codexgo.claudeCode.opusModel` / `sonnetModel` / `haikuModel` / `fableModel` / `subagentModel` | *（空）* | 各档位使用的 OpenCode Go 模型；留空回落到默认模型。 |
+| `codexgo.claudeCode.settingsPath` | *（空）* | `settings.json` 或其所在目录；空 = `CLAUDE_CONFIG_DIR` → `~/.claude`。 |
+| `codexgo.claudeCode.executable` | *（空）* | 用于探测版本的 `claude` CLI；空 = 在 `PATH` 中自动探测。 |
+| `codexgo.claudeCode.replaceBuiltInPicker` | `true` | 写入 `replaceBuiltInOptions: true`，让 `/model` 列出 OpenCode Go 模型。 |
+| `codexgo.claudeCode.useBehavesAs` | `false` | 给选择器条目附加 Claude 能力档案（同时会改变费用展示）。 |
 
 ### 离线行为
 
@@ -408,6 +463,9 @@ DeepSeek 的 thinking 模式不接受强制 `tool_choice`（例如 `{ "type": "f
 - **额度项显示 `OpenCode Go: add API key` / `OpenCode Go: invalid key` / `OpenCode Go: error`** —— 尚未配置密钥、额度端点返回 `401`（密钥无效或没有生效的 Go 套餐），或端点不可达。点击该项可刷新；悬停可看到具体原因和设置密钥操作。
 - **对话完全没有响应** —— 所选模型的上游可能卡住（网关返回 `200`，但只发 `: keep-alive`，没有任何事件），或者该模型在你所在地区不可用（Codex 日志里会出现 `403 ... not supported`，例如 `gpt-5.6-luna`、`gpt-6-luna`、`muse-spark-*`）。换一个模型（`grok-4.6` / `grok-4.7` 是稳妥的备选）或稍后重试即可，配置不需要改。上游路由彼此独立：`/responses`、`/chat/completions` 与 `/messages` 可能分别失败或卡住。cc-switch 这类代理会把 Codex 的 Responses 请求翻译成 Chat Completions，所以在那种情况下它仍然能用；而 Codex 0.162 已移除 `wire_api = "chat"`，本扩展没有可以直接回退的 Chat Completions 通道。
 - **远程压缩失败** —— Chat Completions 与 Anthropic Messages 会使用本地摘要回退，`/responses/compact` 不再返回 `501`。原生 Responses 压缩仍会转发给 OpenCode；DeepSeek 的 Responses 别名可能返回 `404`，此时请选择 Chat 或 Anthropic 别名以使用本地压缩。
+- **Claude Code 提示模型“isn't recognized”** —— 对 OpenCode 模型 ID 是正常现象：Claude Code 会假定 1M 窗口，代理在转发前剥掉本地 `[1m]` 标记。如果希望 Claude Code 套用已知 Claude 能力档案，可开启 `codexgo.claudeCode.useBehavesAs`（需 v2.1.257+）。
+- **Claude Code 的 `/model` 还是内置 Claude 模型** —— `modelPicker` 在启动时读取。请重载窗口或开新会话，并确认没有 managed-settings 覆盖它。
+- **Claude Code 返回 `400 MissingSessionID`** —— 请求没有经过回环代理。确认 `/status` 里显示的是回环 base URL，然后重载窗口让扩展重写 `~/.claude/settings.json`。
 - **模型只输出纯文本、不调用工具** —— 旧版本生成的目录从 Codex 模板继承了 OpenAI 专属传输字段，工具定义因此没有到达网关。用当前版本重新执行「将 OpenCode Go 模型同步到 Codex」即可重新生成目录。
 
 ### 开发

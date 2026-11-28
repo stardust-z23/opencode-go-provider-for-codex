@@ -8,15 +8,23 @@ export type {
 	ChatTransformResult,
 	LocalProxyOptions,
 	LocalProxyServer,
+	ProxyMessagesModelSummary,
 	ProxyModelRoute,
 	ProxyWireApi,
 } from "./server";
 export {
 	decodeAnthropicThinkingBlock,
 	encodeAnthropicThinkingBlock,
+	anthropicUsageToResponsesUsage,
 	proxyAnthropicMessages,
 	responsesToAnthropicRequest,
 } from "./messages";
+export { messagesUrl, proxyNativeMessages } from "./messagesNative";
+export type {
+	NativeMessagesContext,
+	NativeMessagesEndpoint,
+	NativeMessagesOptions,
+} from "./messagesNative";
 export {
 	compactionReplayText,
 	decodeCompactionSummary,

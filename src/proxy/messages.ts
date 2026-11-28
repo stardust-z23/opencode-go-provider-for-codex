@@ -1626,7 +1626,7 @@ function anthropicStopStatus(stopReason: unknown): {
 	return { status: "completed" };
 }
 
-function anthropicUsageToResponsesUsage(raw: unknown): Record<string, unknown> {
+export function anthropicUsageToResponsesUsage(raw: unknown): Record<string, unknown> {
 	const usage = isRecord(raw) ? raw : {};
 	const freshInput = numberValue(usage.input_tokens);
 	const output = numberValue(usage.output_tokens);

@@ -7,4 +7,5 @@ debug.log
 tsconfig.json
 .gitignore
 **/*.map
+TODO.md
 node_modules/**

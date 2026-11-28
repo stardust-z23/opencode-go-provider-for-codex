@@ -11,6 +11,10 @@
 	"command.openModelCenter": "Open OpenCode Go Model Center",
 	"command.openCodexConfig": "Open Codex config.toml",
 	"command.openSettings": "Open OpenCode Go for Codex Settings",
+	"command.configureClaudeCode": "Configure Claude Code for OpenCode Go",
+	"command.refreshClaudeCodePicker": "Refresh Claude Code Model List",
+	"command.restoreClaudeCode": "Restore Claude Code Settings",
+	"command.showClaudeCodeDiagnostics": "Show Claude Code Diagnostics",
 	"walkthrough.title": "Get started with OpenCode Go for Codex",
 	"walkthrough.description": "Set your OpenCode Go API key, then sync the models into Codex.",
 	"walkthrough.setApiKey.title": "Set your OpenCode Go API key",
@@ -29,5 +33,15 @@
 	"config.usageDisplayWindow.monthly.desc": "Monthly (30-day) window.",
 	"config.usageWarningThreshold.desc": "Usage percentage at which the status bar item turns yellow. The worst of the three windows decides.",
 	"config.usageErrorThreshold.desc": "Usage percentage at which the status bar item turns red. The worst of the three windows decides.",
-	"config.proxyPort.desc": "Port for the loopback OpenCode Go proxy (1024-65535)."
+	"config.proxyPort.desc": "Port for the loopback OpenCode Go proxy (1024-65535).",
+	"config.claudeCode.defaultModel.desc": "OpenCode Go model Claude Code uses when a request names an unconfigured Claude model. Leave empty to forward unknown ids unchanged. Takes effect in the proxy immediately.",
+	"config.claudeCode.opusModel.desc": "OpenCode Go model the `opus` tier and any unmapped Opus model id route to. Empty falls back to the default model.",
+	"config.claudeCode.sonnetModel.desc": "OpenCode Go model the `sonnet` tier and any unmapped Sonnet model id route to. Empty falls back to the default model.",
+	"config.claudeCode.haikuModel.desc": "OpenCode Go model the `haiku` tier, background tasks and any unmapped Haiku model id route to. Empty falls back to the default model.",
+	"config.claudeCode.fableModel.desc": "OpenCode Go model the `fable` tier routes to. Empty falls back to the Opus model, then the default model.",
+	"config.claudeCode.subagentModel.desc": "OpenCode Go model Claude Code subagents route to. Empty falls back to the default model.",
+	"config.claudeCode.settingsPath.desc": "Path to Claude Code's `settings.json`, or to the directory containing it. Leave empty to use `CLAUDE_CONFIG_DIR`, then `~/.claude`.",
+	"config.claudeCode.executable.desc": "Claude Code CLI used to read the installed version, so the model list and `behavesAs` are only written where they are supported. Leave empty to auto-detect `claude` on PATH.",
+	"config.claudeCode.replaceBuiltInPicker.desc": "Write `replaceBuiltInOptions: true` so Claude Code's `/model` picker lists the OpenCode Go models instead of the built-in Claude lineup.",
+	"config.claudeCode.useBehavesAs.desc": "Give each picker row a `behavesAs` Claude profile so Claude Code applies known capabilities and effort defaults. Off by default because it also changes how cost is displayed."
 }

@@ -18,6 +18,11 @@ import {
 } from "./media";
 import { proxyAnthropicMessages } from "./messages";
 import {
+	proxyNativeMessages,
+	type NativeMessagesEndpoint,
+} from "./messagesNative";
+import { resolveMessagesModel, type MessagesModelDecision } from "../modelRouting";
+import {
 	dedupeDuplicateArgumentKeys,
 	flattenNativeNamespaces,
 	NativeResponsesSseTransformer,
@@ -58,7 +63,26 @@ export interface LocalProxyOptions {
 	resolveEfforts?: (
 		modelId: string,
 	) => string[] | undefined | Promise<string[] | undefined>;
+	/**
+	 * Anthropic-compatible upstream for Claude Code pass-through, e.g.
+	 * `https://opencode.ai/inference/go/anthropic`. Defaults to
+	 * `upstreamBaseUrl` for tests that serve both wire formats from one base.
+	 */
+	anthropicBaseUrl?: string;
+	/** Resolve the upstream model for a Claude Code Messages request. */
+	resolveMessagesModel?: (
+		modelId: string,
+	) => MessagesModelDecision | undefined | Promise<MessagesModelDecision | undefined>;
+	/** Models advertised to Claude Code gateway discovery. */
+	listMessagesModels?: () => ProxyMessagesModelSummary[];
 	log?: (message: string, detail?: Record<string, unknown>) => void;
+}
+
+/** One row of the Anthropic-shaped `GET /v1/models` answer. */
+export interface ProxyMessagesModelSummary {
+	id: string;
+	name?: string;
+	contextLength?: number;
 }
 
 export interface LocalProxyServer {
@@ -378,7 +402,26 @@ async function handleProxyRequest(
 		res.end(JSON.stringify({ status: "ok" }));
 		return;
 	}
+	if (
+		(req.method === "GET" || req.method === "HEAD") &&
+		(url.pathname === "/api/hello" || url.pathname === "/v1/api/hello")
+	) {
+		// Claude Code probes this best effort. Forwarding it upstream hangs for
+		// minutes, so answer locally and never forward it.
+		res.writeHead(200, { "content-type": "application/json" });
+		res.end(
+			req.method === "HEAD" ? undefined : JSON.stringify({ status: "ok" }),
+		);
+		return;
+	}
 	if (req.method === "GET" && (url.pathname === "/models" || url.pathname === "/v1/models")) {
+		// Claude Code's gateway discovery identifies itself with `anthropic-version`
+		// and expects an Anthropic list; Codex only probes reachability.
+		if (headerValue(req.headers["anthropic-version"])) {
+			res.writeHead(200, { "content-type": "application/json" });
+			res.end(JSON.stringify(anthropicModelsPayload(options.listMessagesModels?.() ?? [])));
+			return;
+		}
 		res.writeHead(200, { "content-type": "application/json" });
 		res.end(JSON.stringify({ object: "list", data: [] }));
 		return;
@@ -389,7 +432,7 @@ async function handleProxyRequest(
 		return;
 	}
 
-	const endpoint = normalizeResponsesPath(url.pathname);
+	const endpoint = normalizeProxyPath(url.pathname);
 	if (!endpoint) {
 		res.writeHead(404, { "content-type": "application/json" });
 		res.end(JSON.stringify({ error: { message: "Unknown proxy endpoint" } }));
@@ -416,7 +459,7 @@ async function handleProxyRequest(
 	const configuredKey = (await options.resolveApiKey())?.trim();
 	const configuredProxyToken =
 		(await options.resolveProxyToken?.())?.trim() || configuredKey;
-	const incomingKey = bearerToken(req.headers.authorization);
+	const incomingKey = proxyCredential(req.headers);
 	if (!isAuthorized(incomingKey, configuredProxyToken)) {
 		res.writeHead(401, { "content-type": "application/json" });
 		res.end(JSON.stringify({ error: { message: "Unauthorized proxy request" } }));
@@ -429,10 +472,26 @@ async function handleProxyRequest(
 		return;
 	}
 
+	const resolvedSession = resolveSessionId(req.headers, body);
+	if (endpoint === "messages" || endpoint === "count_tokens") {
+		await proxyClaudeMessages(req, res, options, {
+			endpoint,
+			body,
+			apiKey,
+			modelId,
+			sessionId: resolvedSession.id,
+			sessionSource: resolvedSession.source,
+			startedAt,
+			clientRequestId:
+				headerValue(req.headers["x-client-request-id"]) ??
+				headerValue(req.headers["x-request-id"]),
+		});
+		return;
+	}
+
 	const route = await options.resolveModel?.(modelId);
 	const upstreamEfforts = route?.efforts ?? (await options.resolveEfforts?.(modelId));
 	mapCodexEffortToUpstream(body, upstreamEfforts);
-	const resolvedSession = resolveSessionId(req.headers, body);
 
 	const wireApi = route?.wireApi ?? (await options.resolveWireApi?.(modelId)) ?? "chat";
 	const upstreamModelId = route?.upstreamModelId?.trim() || modelId;
@@ -508,6 +567,102 @@ async function handleProxyRequest(
 	}
 
 	await proxyChatCompletions(req, res, options, context);
+}
+
+interface ClaudeMessagesRequest {
+	endpoint: NativeMessagesEndpoint;
+	body: Record<string, unknown>;
+	apiKey: string;
+	modelId: string;
+	sessionId?: string;
+	sessionSource?: string;
+	startedAt: number;
+	clientRequestId?: string;
+}
+
+/**
+ * Claude Code already speaks Anthropic Messages, so this path only routes: it
+ * rewrites `model`, reports the request, and hands the body to the pass-through.
+ */
+async function proxyClaudeMessages(
+	req: http.IncomingMessage,
+	res: http.ServerResponse,
+	options: LocalProxyOptions,
+	request: ClaudeMessagesRequest,
+): Promise<void> {
+	const decision =
+		(await options.resolveMessagesModel?.(request.modelId)) ??
+		resolveMessagesModel({
+			requestedModelId: request.modelId,
+			knownModelIds: [],
+			roles: {},
+		});
+	const stream = request.body.stream === true;
+	const context: ProxyRequestContext = {
+		body: request.body,
+		apiKey: request.apiKey,
+		wireApi: "anthropic",
+		startedAt: request.startedAt,
+		traceId: randomUUID(),
+		requestedModel: request.modelId,
+		sessionId: request.sessionId,
+		sessionSource: request.sessionSource,
+		clientRequestId: request.clientRequestId,
+		stream,
+		compaction: false,
+	};
+	options.log?.("messages.native.request", {
+		...requestLogIdentity(context),
+		endpoint: request.endpoint,
+		upstreamModel: decision.upstreamModelId,
+		route: decision.source,
+		role: decision.role,
+		oneMillion: decision.strippedOneMillion,
+		...requestCapabilities(request.body),
+	});
+	await proxyNativeMessages(
+		req,
+		res,
+		{
+			upstreamBaseUrl: options.anthropicBaseUrl ?? options.upstreamBaseUrl,
+			log: options.log,
+			usage: (purpose, usage) => reportResponsesUsage(options, context, purpose, usage),
+			upstreamError: (upstream, detail) =>
+				reportUpstreamError(options, context, upstream, detail),
+		},
+		{
+			body: request.body,
+			apiKey: request.apiKey,
+			sessionId: request.sessionId,
+			stream,
+			route: decision,
+		},
+		request.endpoint,
+	);
+}
+
+/**
+ * Content-free shape of the request, logged so a live session can answer the
+ * one question this design cannot answer from the docs: does Claude Code send
+ * `thinking` for a model id it does not recognise?
+ */
+function requestCapabilities(
+	body: Record<string, unknown>,
+): Record<string, unknown> {
+	const thinking = isRecord(body.thinking) ? body.thinking : undefined;
+	const tools = Array.isArray(body.tools) ? body.tools : [];
+	const system = body.system;
+	return {
+		tools: tools.length,
+		hasThinking: Boolean(thinking),
+		thinkingType: typeof thinking?.type === "string" ? thinking.type : undefined,
+		thinkingBudget:
+			typeof thinking?.budget_tokens === "number" ? thinking.budget_tokens : undefined,
+		hasOutputConfig: isRecord(body.output_config),
+		hasContextManagement: isRecord(body.context_management),
+		systemBlocks: Array.isArray(system) ? system.length : typeof system === "string" ? 1 : 0,
+		maxTokens: typeof body.max_tokens === "number" ? body.max_tokens : undefined,
+	};
 }
 
 /**
@@ -597,7 +752,9 @@ function requestLogIdentity(context: ProxyRequestContext): Record<string, unknow
 	};
 }
 
-function normalizeResponsesPath(pathname: string): "responses" | "compact" | undefined {
+function normalizeProxyPath(
+	pathname: string,
+): "responses" | "compact" | "messages" | "count_tokens" | undefined {
 	const normalized = pathname.replace(/\/+/g, "/").replace(/\/$/, "");
 	if (
 		normalized === "/responses" ||
@@ -613,7 +770,34 @@ function normalizeResponsesPath(pathname: string): "responses" | "compact" | und
 	) {
 		return "compact";
 	}
+	if (normalized === "/messages" || normalized === "/v1/messages") {
+		return "messages";
+	}
+	if (
+		normalized === "/messages/count_tokens" ||
+		normalized === "/v1/messages/count_tokens"
+	) {
+		return "count_tokens";
+	}
 	return undefined;
+}
+
+/** Anthropic-shaped model list for Claude Code gateway discovery. */
+function anthropicModelsPayload(
+	models: ProxyMessagesModelSummary[],
+): Record<string, unknown> {
+	const data = models.map((model) => ({
+		type: "model",
+		id: model.id,
+		display_name: model.name?.trim() || model.id,
+		created_at: "1970-01-01T00:00:00Z",
+	}));
+	return {
+		data,
+		has_more: false,
+		first_id: data[0]?.id ?? null,
+		last_id: data[data.length - 1]?.id ?? null,
+	};
 }
 
 async function proxyNativeResponses(
@@ -2560,6 +2744,19 @@ function isAuthorized(incoming: string | undefined, configured: string | undefin
 function bearerToken(value: string | undefined): string | undefined {
 	const match = value?.match(/^Bearer\s+(.+)$/i);
 	return match?.[1]?.trim() || undefined;
+}
+
+/**
+ * Claude Code sends `Authorization: Bearer` for `ANTHROPIC_AUTH_TOKEN` and
+ * `x-api-key` when someone configured `ANTHROPIC_API_KEY` by hand. Accept both
+ * so a takeover does not depend on which key Claude Code was pointed at.
+ */
+function proxyCredential(headers: http.IncomingHttpHeaders): string | undefined {
+	const bearer = bearerToken(headers.authorization);
+	if (bearer) {
+		return bearer;
+	}
+	return headerValue(headers["x-api-key"])?.trim() || undefined;
 }
 
 function isLoopbackRequest(req: http.IncomingMessage): boolean {

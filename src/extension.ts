@@ -22,6 +22,13 @@ import {
 	syncProxyWithSetting,
 } from "./proxyController";
 import { registerUsageDashboard } from "./usagePanel";
+import {
+	configureClaudeCode,
+	maybeRepairClaudeCodeIntegration,
+	refreshClaudeCodePicker,
+	restoreClaudeCode,
+	showClaudeCodeDiagnostics,
+} from "./claudeCodeService";
 import { disposeUsageStore, setUsageStore } from "./usageService";
 import { UsageStore } from "./usageStore";
 import { setExtensionVersion } from "./utils";
@@ -93,14 +100,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 				"@ext:codexgo.opencode-go-provider-for-codex",
 			),
 		),
+		vscode.commands.registerCommand("codexgo.configureClaudeCode", () =>
+			configureClaudeCode(claudeContext(context)),
+		),
+		vscode.commands.registerCommand("codexgo.refreshClaudeCodePicker", () =>
+			refreshClaudeCodePicker(claudeContext(context)),
+		),
+		vscode.commands.registerCommand("codexgo.restoreClaudeCode", () =>
+			restoreClaudeCode(claudeContext(context)),
+		),
+		vscode.commands.registerCommand("codexgo.showClaudeCodeDiagnostics", () =>
+			showClaudeCodeDiagnostics(claudeContext(context)),
+		),
 		registerUsageDashboard(context, usageStore),
 		registerModelCenter(context, modelCenter),
 	);
-	void initializeProxy(context).catch((error) => {
-		logger.error("proxy.initialize.failed", {
-			error: error instanceof Error ? error.message : String(error),
+	void initializeProxy(context)
+		.then(() => maybeRepairClaudeCodeIntegration(claudeContext(context)))
+		.catch((error) => {
+			logger.error("proxy.initialize.failed", {
+				error: error instanceof Error ? error.message : String(error),
+			});
 		});
-	});
 	modelCenter.start();
 
 	void showWelcomeIfNeeded(context);
@@ -108,6 +129,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	context.subscriptions.push({
 		dispose: () => logger.dispose(),
 	});
+}
+
+/** Claude Code integration shares the secret storage and global state. */
+function claudeContext(context: vscode.ExtensionContext): {
+	secrets: vscode.SecretStorage;
+	globalState: vscode.Memento;
+} {
+	return { secrets: context.secrets, globalState: context.globalState };
 }
 
 function showModelCenterUpdates(event: ModelCenterUpdateEvent): void {

@@ -6,7 +6,12 @@ import {
 	resolveApiKey,
 	setApiKeyCommand,
 } from "./apiKey";
-import { LocalProxyServer, ProxyModelRoute, startLocalProxy } from "./proxy";
+import {
+	LocalProxyServer,
+	ProxyMessagesModelSummary,
+	ProxyModelRoute,
+	startLocalProxy,
+} from "./proxy";
 import { deriveProxyToken } from "./proxyToken";
 import { applyProviderEndpoint, readCurrent } from "./codexConfig";
 import { HARDCODED_GO_MODELS } from "./hardcodedModels";
@@ -15,9 +20,20 @@ import { logger } from "./logger";
 import {
 	ensureOfficialCatalogLoadedOnce,
 	getOfficialCatalogFacts,
+	getOfficialCatalogSnapshot,
 } from "./officialCatalog";
+import { isChatModel } from "./modelCenterData";
+import {
+	resolveMessagesModel,
+	type MessagesModelDecision,
+	type RoleModelMap,
+} from "./modelRouting";
 import { protocolAliasForId } from "./protocolVariants";
-import { OPENCODE_GO_BASE_URL, OPENCODE_GO_PROVIDER } from "./tomlEdit";
+import {
+	OPENCODE_GO_ANTHROPIC_BASE_URL,
+	OPENCODE_GO_BASE_URL,
+	OPENCODE_GO_PROVIDER,
+} from "./tomlEdit";
 import { getUsageStore } from "./usageService";
 
 type LocalProxyState = "off" | "starting" | "on" | "error";
@@ -84,7 +100,7 @@ export async function syncProxyWithSetting(userInitiated = false): Promise<void>
 			updateStatus({ state: "off", port: getConfiguredPort(), lastError: undefined });
 			return;
 		}
-		if (keyInfo.key && status.state === "on") {
+		if (keyInfo.key && status.state === "on" && (await hasOpenCodeProviderConfigured())) {
 			await applyProviderEndpoint(status.baseUrl, {
 				bearerToken: deriveProxyToken(keyInfo.key),
 			});
@@ -202,12 +218,15 @@ async function enableProxy(userInitiated: boolean): Promise<void> {
 		proxyServer = await startLocalProxy({
 			port,
 			upstreamBaseUrl: OPENCODE_GO_BASE_URL,
+			anthropicBaseUrl: OPENCODE_GO_ANTHROPIC_BASE_URL,
 			resolveApiKey: async () => (await resolveApiKey(extensionContext!.secrets)).key,
 			resolveProxyToken: async () => {
 				const key = (await resolveApiKey(extensionContext!.secrets)).key;
 				return key ? deriveProxyToken(key) : undefined;
 			},
 			resolveModel: resolveModelRoute,
+			resolveMessagesModel: resolveClaudeMessagesModel,
+			listMessagesModels: listClaudeMessagesModels,
 			log: logProxyEvent,
 		});
 		updateStatus({
@@ -220,9 +239,13 @@ async function enableProxy(userInitiated: boolean): Promise<void> {
 		if (!key) {
 			throw new Error("OpenCode Go API key is not configured");
 		}
-		await applyProviderEndpoint(status.baseUrl, {
-			bearerToken: deriveProxyToken(key),
-		});
+		// Claude Code only: do not create `~/.codex/config.toml` behind the user's
+		// back. Codex users already have the provider, and catalog sync writes it.
+		if (await hasOpenCodeProviderConfigured()) {
+			await applyProviderEndpoint(status.baseUrl, {
+				bearerToken: deriveProxyToken(key),
+			});
+		}
 		logger.info("proxy.started", { address: status.address, port: status.port });
 		if (userInitiated) {
 			vscode.window.showInformationMessage(
@@ -249,12 +272,15 @@ async function restartProxy(): Promise<void> {
 		proxyServer = await startLocalProxy({
 			port: getConfiguredPort(),
 			upstreamBaseUrl: OPENCODE_GO_BASE_URL,
+			anthropicBaseUrl: OPENCODE_GO_ANTHROPIC_BASE_URL,
 			resolveApiKey: async () => (await resolveApiKey(extensionContext!.secrets)).key,
 			resolveProxyToken: async () => {
 				const key = (await resolveApiKey(extensionContext!.secrets)).key;
 				return key ? deriveProxyToken(key) : undefined;
 			},
 			resolveModel: resolveModelRoute,
+			resolveMessagesModel: resolveClaudeMessagesModel,
+			listMessagesModels: listClaudeMessagesModels,
 			log: logProxyEvent,
 		});
 		updateStatus({
@@ -267,9 +293,11 @@ async function restartProxy(): Promise<void> {
 		if (!key) {
 			throw new Error("OpenCode Go API key is not configured");
 		}
-		await applyProviderEndpoint(status.baseUrl, {
-			bearerToken: deriveProxyToken(key),
-		});
+		if (await hasOpenCodeProviderConfigured()) {
+			await applyProviderEndpoint(status.baseUrl, {
+				bearerToken: deriveProxyToken(key),
+			});
+		}
 		logger.info("proxy.restarted", { port: status.port });
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
@@ -319,6 +347,108 @@ async function resolveModelRoute(modelId: string): Promise<ProxyModelRoute> {
 		upstreamModelId: alias?.baseId,
 		efforts,
 	};
+}
+
+/**
+ * Claude Code 在 `/model` 里选中什么就发什么，所以这里只做路由：已知的 Go
+ * 模型原样转发，Claude 角色别名按设置改写，`[1m]` 标记一律剥掉。
+ */
+async function resolveClaudeMessagesModel(
+	modelId: string,
+): Promise<MessagesModelDecision> {
+	try {
+		await ensureOfficialCatalogLoadedOnce();
+	} catch (error) {
+		logger.warn("claudeCode.modelLookup.failed", {
+			modelId,
+			error: error instanceof Error ? error.message : String(error),
+		});
+	}
+	const decision = resolveMessagesModel({
+		requestedModelId: protocolAliasForId(modelId)?.baseId ?? modelId,
+		knownModelIds: knownOpenCodeModelIds(),
+		roles: claudeRoleSettings(),
+	});
+	if (decision.requestedModelId !== modelId) {
+		// A Codex-facing protocol alias (`…-anthropic` / `…-responses`) was used as
+		// a Claude model id; the upstream only knows the base model.
+		decision.requestedModelId = modelId;
+	}
+	if (decision.upstreamModelId !== decision.normalizedModelId) {
+		logger.info("claudeCode.model.rewritten", {
+			requested: decision.requestedModelId,
+			upstream: decision.upstreamModelId,
+			route: decision.source,
+			role: decision.role,
+		});
+	}
+	return decision;
+}
+
+/** 当前账号或目录能解析到的 Go 模型 ID（官方目录 + 内置快照）。 */
+function knownOpenCodeModelIds(): string[] {
+	const ids = new Set<string>();
+	for (const model of getOfficialCatalogSnapshot()?.models ?? []) {
+		ids.add(model.id);
+	}
+	for (const model of HARDCODED_GO_MODELS) {
+		ids.add(model.id);
+	}
+	return [...ids];
+}
+
+/** Claude Code 四档与子代理档的设置值。空串表示未配置。 */
+function claudeRoleSettings(): RoleModelMap {
+	const config = vscode.workspace.getConfiguration("codexgo.claudeCode");
+	const read = (key: string): string | undefined => {
+		const value = config.get<string>(key, "").trim();
+		if (!value) {
+			return undefined;
+		}
+		// Protocol aliases are Codex-facing; Claude Code must send the base id.
+		return protocolAliasForId(value)?.baseId ?? value;
+	};
+	return {
+		default: read("defaultModel"),
+		opus: read("opusModel"),
+		sonnet: read("sonnetModel"),
+		haiku: read("haikuModel"),
+		fable: read("fableModel"),
+		subagent: read("subagentModel"),
+	};
+}
+
+/**
+ * Claude Code 的网关发现（`CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1`）会在
+ * 3 秒内等答复，因此只用已有快照，不在这里发网络请求。
+ */
+function listClaudeMessagesModels(): ProxyMessagesModelSummary[] {
+	const snapshot = getOfficialCatalogSnapshot();
+	void ensureOfficialCatalogLoadedOnce().catch(() => undefined);
+	const models: ProxyMessagesModelSummary[] = [];
+	const seen = new Set<string>();
+	for (const model of snapshot?.models ?? []) {
+		if (!isChatModel(model) || seen.has(model.id)) {
+			continue;
+		}
+		seen.add(model.id);
+		models.push({
+			id: model.id,
+			name: model.name,
+			contextLength: model.contextLimit,
+		});
+	}
+	if (models.length > 0) {
+		return models;
+	}
+	for (const model of HARDCODED_GO_MODELS) {
+		if (seen.has(model.id)) {
+			continue;
+		}
+		seen.add(model.id);
+		models.push({ id: model.id, name: model.name });
+	}
+	return models;
 }
 
 function runProxyOperation(next: () => Promise<void>): Promise<void> {

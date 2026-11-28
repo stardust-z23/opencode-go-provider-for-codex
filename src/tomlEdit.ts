@@ -30,6 +30,13 @@ export type CodexWireApi = "responses";
 export const OPENCODE_GO_BASE_URL = "https://opencode.ai/inference/go/v1";
 
 /**
+ * OpenCode Go 的 Anthropic 兼容端点，供 Claude Code 使用（客户端会自行拼接
+ * `/v1/messages`）。Go 会把非 Messages 原生模型翻译成各自的原生 API。
+ */
+export const OPENCODE_GO_ANTHROPIC_BASE_URL =
+	"https://opencode.ai/inference/go/anthropic";
+
+/**
  * 写入 Codex `config.toml` 的 provider 块。既然 Codex 只支持 Responses
  * 线上协议，一个块就够了。
  */
